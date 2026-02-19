@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>tess2-rust — Interactive Tessellation Demos</title>
+  <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+  <button id="menu-toggle" class="menu-toggle" aria-label="Toggle navigation">
+    <span></span><span></span><span></span>
+  </button>
+  <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <h1 class="logo">tess2<span class="logo-accent">.rs</span></h1>
+      <p class="tagline">SGI Tessellation Library for Rust</p>
+    </div>
+    <ul class="nav-list">
+      <li><a href="#/" class="nav-link active" data-route="home">
+        <span class="nav-icon">&#9670;</span> Home
+      </a></li>
+      <li class="nav-group open" data-section="basic">
+        <button class="nav-section" aria-expanded="true">Basic Polygons</button>
+        <ul class="nav-group-items">
+          <li><a href="#/single_triangle" class="nav-link" data-route="single_triangle">
+            <span class="nav-icon">&#9651;</span> Single Triangle
+          </a></li>
+          <li><a href="#/unit_quad" class="nav-link" data-route="unit_quad">
+            <span class="nav-icon">&#9632;</span> Unit Quad
+          </a></li>
+          <li><a href="#/polygon_with_hole" class="nav-link" data-route="polygon_with_hole">
+            <span class="nav-icon">&#9711;</span> Polygon with Hole
+          </a></li>
+        </ul>
+      </li>
+      <li class="nav-group open" data-section="winding">
+        <button class="nav-section" aria-expanded="true">Winding Rules</button>
+        <ul class="nav-group-items">
+          <li><a href="#/winding_rules" class="nav-link" data-route="winding_rules">
+            <span class="nav-icon">&#10006;</span> Winding Rules Comparison
+          </a></li>
+          <li><a href="#/star" class="nav-link" data-route="star">
+            <span class="nav-icon">&#9733;</span> Five-Pointed Star
+          </a></li>
+        </ul>
+      </li>
+      <li class="nav-group open" data-section="complex">
+        <button class="nav-section" aria-expanded="true">Complex Shapes</button>
+        <ul class="nav-group-items">
+          <li><a href="#/butterfly" class="nav-link" data-route="butterfly">
+            <span class="nav-icon">&#10022;</span> Butterfly (Self-Intersecting)
+          </a></li>
+          <li><a href="#/nested_squares" class="nav-link" data-route="nested_squares">
+            <span class="nav-icon">&#9633;</span> Nested Squares
+          </a></li>
+          <li><a href="#/interactive" class="nav-link" data-route="interactive">
+            <span class="nav-icon">&#9998;</span> Interactive Editor
+          </a></li>
+        </ul>
+      </li>
+    </ul>
+    <div class="sidebar-footer">
+      <p><a href="https://github.com/larsbrubaker/tess2-rust" target="_blank">Source on GitHub</a></p>
+      <p>Rust port of <a href="https://github.com/memononen/libtess2" target="_blank">libtess2</a></p>
+      <p class="license">SGI Free Software License B (MIT-compatible)</p>
+    </div>
+  </nav>
+
+  <main id="main-content">
+    <!-- Content dynamically injected by router -->
+  </main>
+
+  <script>
+    // Sidebar accordion
+    (function() {
+      var groups = document.querySelectorAll('.nav-group');
+      groups.forEach(function(group) {
+        var btn = group.querySelector('.nav-section');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+          var expanded = group.classList.toggle('open');
+          btn.setAttribute('aria-expanded', String(expanded));
+        });
+      });
+
+      // Mobile sidebar toggle
+      var menuToggle = document.getElementById('menu-toggle');
+      var sidebar = document.getElementById('sidebar');
+      var overlay = document.getElementById('sidebar-overlay');
+
+      function openSidebar() {
+        sidebar.classList.add('open');
+        menuToggle.classList.add('open');
+        overlay.classList.add('visible');
+      }
+      function closeSidebar() {
+        sidebar.classList.remove('open');
+        menuToggle.classList.remove('open');
+        overlay.classList.remove('visible');
+      }
+      menuToggle.addEventListener('click', function() {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+      });
+      overlay.addEventListener('click', closeSidebar);
+      document.querySelectorAll('.nav-link').forEach(function(l) {
+        l.addEventListener('click', closeSidebar);
+      });
+    })();
+  </script>
+  <script type="module" src="./public/dist/main.js"></script>
+</body>
+</html>
