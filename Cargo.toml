@@ -1,0 +1,20 @@
+[package]
+name = "tess2-rust"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+license = "MIT"
+description = "Pure Rust port of libtess2 - SGI tessellation library"
+repository = "https://github.com/larsbrubaker/tess2-rust"
+homepage = "https://larsbrubaker.github.io/tess2-rust/"
+documentation = "https://docs.rs/tess2-rust"
+keywords = ["tessellation", "polygon", "graphics", "2d", "geometry"]
+categories = ["graphics", "algorithms"]
+exclude = ["demo/", ".github/", "cpp_reference/"]
+
+[workspace]
+members = [".", "demo/wasm"]
+
+[dependencies]
+
+[dev-dependencies]

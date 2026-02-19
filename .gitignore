@@ -1,0 +1,5 @@
+/target
+/demo/public/pkg
+/demo/public/dist
+/demo/node_modules
+Cargo.lock
