@@ -52,6 +52,7 @@ export function init(container: HTMLElement): void {
     drawTessellation(canvas, result.vertices, result.elements, {
       fillColor: COLORS.fill,
       showInput: true,
+      fillInput: false,
       inputContours: [outer, inner],
     });
     statsEl.textContent = `${result.triangleCount} triangle(s) · ${result.vertices.length/2} vertices`;

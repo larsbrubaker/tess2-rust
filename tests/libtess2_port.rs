@@ -271,6 +271,50 @@ fn demo_butterfly_no_crash() {
     }
 }
 
+/// Verify star tessellation output vertices are in the expected range
+#[test]
+fn star_output_vertices() {
+    use std::f64::consts::PI;
+    let n = 5usize;
+    let step = PI * 2.0 / n as f64;
+    let star: Vec<f32> = (0..n).flat_map(|i| {
+        let angle = -PI / 2.0 + i as f64 * step * 2.0;
+        [angle.cos() as f32, angle.sin() as f32]
+    }).collect();
+    println!("Star input: {:?}", star);
+
+    for wr in [WindingRule::Odd, WindingRule::NonZero, WindingRule::Positive] {
+        let mut t = Tessellator::new();
+        t.add_contour(2, &star);
+        assert!(t.tessellate(wr, ElementType::Polygons, 3, 2, None));
+        let verts = t.vertices();
+        let elems = t.elements();
+        println!("{:?}: {} tris, {} verts, {} elems", wr, t.element_count(), verts.len()/2, elems.len());
+        // All output vertices must be finite and in a reasonable range
+        for (i, &v) in verts.iter().enumerate() {
+            assert!(v.is_finite(), "vertex[{}] = {} is not finite", i, v);
+            assert!(v.abs() <= 2.0, "vertex[{}] = {} is out of range [-2,2]", i, v);
+        }
+        // Check bounding box is non-degenerate
+        let xs: Vec<f32> = verts.iter().step_by(2).copied().collect();
+        let ys: Vec<f32> = verts.iter().skip(1).step_by(2).copied().collect();
+        let xmin = xs.iter().copied().fold(f32::INFINITY, f32::min);
+        let xmax = xs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let ymin = ys.iter().copied().fold(f32::INFINITY, f32::min);
+        let ymax = ys.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        println!("  bbox: x=[{:.3},{:.3}] y=[{:.3},{:.3}]", xmin, xmax, ymin, ymax);
+        println!("  vertices: {:?}", &verts[..verts.len().min(20)]);
+        println!("  elements: {:?}", &elems[..elems.len().min(15)]);
+        // Element indices must all be valid vertex indices
+        for (j, &idx) in elems.iter().enumerate() {
+            assert!((idx as usize * 2 + 1) < verts.len(),
+                "element[{}]={} out of range (verts.len={})", j, idx, verts.len());
+        }
+        assert!(xmax > xmin, "degenerate x range");
+        assert!(ymax > ymin, "degenerate y range");
+    }
+}
+
 /// AvoidsCrashInAddRightEdges: another complex mixed contour → no crash
 #[test]
 fn avoids_crash_in_add_right_edges() {

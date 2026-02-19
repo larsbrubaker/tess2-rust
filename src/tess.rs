@@ -1140,6 +1140,11 @@ impl Tessellator {
         let (ol_s, ol_t) = (mesh.verts[org_lo as usize].s, mesh.verts[org_lo as usize].t);
         let (du_s, du_t) = (mesh.verts[dst_up as usize].s, mesh.verts[dst_up as usize].t);
         let (dl_s, dl_t) = (mesh.verts[dst_lo as usize].s, mesh.verts[dst_lo as usize].t);
+        // Save coords of all 4 endpoints before the mesh is mutated by split_edge.
+        let ou_coords = mesh.verts[org_up as usize].coords;
+        let du_coords = mesh.verts[dst_up as usize].coords;
+        let ol_coords = mesh.verts[org_lo as usize].coords;
+        let dl_coords = mesh.verts[dst_lo as usize].coords;
         let ev_s = self.event_s;
         let ev_t = self.event_t;
         drop(mesh);
@@ -1263,12 +1268,10 @@ impl Tessellator {
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].t = isect_t;
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].coords = compute_intersect_coords(
             isect_s, isect_t,
-            org_up_s, org_up_t, self.mesh.as_ref().unwrap().verts[
-                self.mesh.as_ref().unwrap().edges[e_up2 as usize].org as usize
-            ].coords,
-            dst_up_s, dst_up_t,
-            org_lo_s, org_lo_t,
-            dst_lo_s, dst_lo_t,
+            org_up_s, org_up_t, ou_coords,
+            dst_up_s, dst_up_t, du_coords,
+            org_lo_s, org_lo_t, ol_coords,
+            dst_lo_s, dst_lo_t, dl_coords,
         );
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].idx = TESS_UNDEF;
 
@@ -2037,15 +2040,49 @@ fn check_orientation(mesh: &mut Mesh) {
     }
 }
 
+/// Mirrors C `GetIntersectData` / `VertexWeights`.
+/// Computes the intersection vertex's 3D coords as a weighted combination
+/// of the four edge endpoints, where each edge contributes 50% of the weight
+/// split between its org/dst proportional to their L1 distance to the intersection.
 fn compute_intersect_coords(
-    _isect_s: Real, _isect_t: Real,
-    org_up_s: Real, org_up_t: Real, _org_up_coords: [Real; 3],
-    dst_up_s: Real, dst_up_t: Real,
-    org_lo_s: Real, org_lo_t: Real,
-    dst_lo_s: Real, dst_lo_t: Real,
+    isect_s: Real, isect_t: Real,
+    org_up_s: Real, org_up_t: Real, org_up_coords: [Real; 3],
+    dst_up_s: Real, dst_up_t: Real, dst_up_coords: [Real; 3],
+    org_lo_s: Real, org_lo_t: Real, org_lo_coords: [Real; 3],
+    dst_lo_s: Real, dst_lo_t: Real, dst_lo_coords: [Real; 3],
 ) -> [Real; 3] {
-    // Simplified: return zeros (coordinates computed by interpolation in full impl)
-    [0.0, 0.0, 0.0]
+    // VertL1dist(u, v) = |u.s - v.s| + |u.t - v.t|
+    let l1 = |as_: Real, at: Real, bs: Real, bt: Real| -> Real {
+        (as_ - bs).abs() + (at - bt).abs()
+    };
+
+    let mut coords = [0.0f32; 3];
+
+    // VertexWeights for eUp edge (orgUp → dstUp)
+    let t1 = l1(org_up_s, org_up_t, isect_s, isect_t);
+    let t2 = l1(dst_up_s, dst_up_t, isect_s, isect_t);
+    let (w0, w1) = if t1 + t2 > 0.0 {
+        (0.5 * t2 / (t1 + t2), 0.5 * t1 / (t1 + t2))
+    } else {
+        (0.25, 0.25)
+    };
+    for i in 0..3 {
+        coords[i] += w0 * org_up_coords[i] + w1 * dst_up_coords[i];
+    }
+
+    // VertexWeights for eLo edge (orgLo → dstLo)
+    let t3 = l1(org_lo_s, org_lo_t, isect_s, isect_t);
+    let t4 = l1(dst_lo_s, dst_lo_t, isect_s, isect_t);
+    let (w2, w3) = if t3 + t4 > 0.0 {
+        (0.5 * t4 / (t3 + t4), 0.5 * t3 / (t3 + t4))
+    } else {
+        (0.25, 0.25)
+    };
+    for i in 0..3 {
+        coords[i] += w2 * org_lo_coords[i] + w3 * dst_lo_coords[i];
+    }
+
+    coords
 }
 
 // ────────────────────────── Public wrapper ────────────────────────────────────

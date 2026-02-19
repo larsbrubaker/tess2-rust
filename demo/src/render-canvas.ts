@@ -28,6 +28,8 @@ export interface DrawOptions {
   fillColor?: Color;
   wireframe?: boolean;
   showInput?: boolean;
+  /** When true (default false), input contours are filled as well as stroked. */
+  fillInput?: boolean;
   inputContours?: number[][];   // [x0,y0,x1,y1,...] per contour
   padding?: number;
 }
@@ -114,11 +116,10 @@ export function drawTessellation(
     }
   }
 
-  // Draw input contours
+  // Draw input contours as dashed outlines (filled only when explicitly requested)
   if (opts.showInput !== false && opts.inputContours) {
     for (const c of opts.inputContours) {
       if (c.length < 4) continue;
-      ctx.fillStyle = rgba(COLORS.input);
       ctx.strokeStyle = rgba(COLORS.inputStroke);
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 3]);
@@ -130,7 +131,10 @@ export function drawTessellation(
         ctx.lineTo(px, py);
       }
       ctx.closePath();
-      ctx.fill();
+      if (opts.fillInput) {
+        ctx.fillStyle = rgba(COLORS.input);
+        ctx.fill();
+      }
       ctx.stroke();
       ctx.setLineDash([]);
     }
