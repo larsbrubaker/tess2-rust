@@ -4,6 +4,14 @@
 use wasm_bindgen::prelude::*;
 use tess2_rust::{Tessellator, TessOption, WindingRule, ElementType};
 
+#[wasm_bindgen(start)]
+pub fn main_js() {
+    #[cfg(feature = "console_error_panic_hook")]
+    console_error_panic_hook::set_once();
+    // Always set in debug; in release we use the feature flag via the dep.
+    console_error_panic_hook::set_once();
+}
+
 /// A stateful tessellator that can accumulate multiple contours then tessellate.
 #[wasm_bindgen]
 pub struct TessellatorJs {

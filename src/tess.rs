@@ -400,21 +400,8 @@ impl Tessellator {
         let mut v = mesh.verts[V_HEAD as usize].next;
         while v != V_HEAD { count += 1; v = mesh.verts[v as usize].next; }
 
-        let mut pq = PriorityQ::new(count + 8, |_, _| true); // leq compared externally
-        let mut v = mesh.verts[V_HEAD as usize].next;
-        while v != V_HEAD {
-            let handle = pq.insert(v);
-            if handle == INVALID_HANDLE { return false; }
-            self.mesh.as_mut().unwrap().verts[v as usize].pq_handle = handle;
-            v = self.mesh.as_ref().unwrap().verts[v as usize].next;
-        }
-
-        // Sort by vert_leq: we need a custom sort
-        // The PriorityQ sorts its sort array in descending order using the leq function.
-        // We need vertex coordinates for comparison, which requires the mesh.
-        // Solution: collect (s,t,idx) and sort, then reinitialize.
+        // Collect (s,t,vert_idx) and sort ascending by vert_leq.
         let mut vert_coords: Vec<(Real, Real, VertIdx)> = Vec::with_capacity(count);
-        let mesh = self.mesh.as_ref().unwrap();
         let mut v = mesh.verts[V_HEAD as usize].next;
         while v != V_HEAD {
             vert_coords.push((mesh.verts[v as usize].s, mesh.verts[v as usize].t, v));
@@ -422,16 +409,22 @@ impl Tessellator {
         }
         drop(mesh);
 
-        // Sort ascending by (s, t) - we'll extract from smallest first
         vert_coords.sort_unstable_by(|a, b| {
             if vert_leq(a.0, a.1, b.0, b.1) { std::cmp::Ordering::Less }
             else { std::cmp::Ordering::Greater }
         });
 
-        // Build a sorted event queue using just a Vec (simplest approach that matches C behavior)
+        // Build the sorted event queue. Store each vertex's position as a negative
+        // handle (convention: -(index+1)) so that pq_delete can invalidate it.
         self.sorted_events = vert_coords.iter().map(|&(_, _, v)| v).collect();
         self.sorted_event_pos = 0;
-        self.pq = None; // We'll use sorted_events directly
+        self.pq = None; // Dynamic heap used only for intersection vertices added later
+
+        // Assign each initial vertex a handle encoding its sorted_events index.
+        for (idx, &(_, _, v)) in vert_coords.iter().enumerate() {
+            let handle = -(idx as i32 + 1); // negative → sorted_events slot
+            self.mesh.as_mut().unwrap().verts[v as usize].pq_handle = handle;
+        }
 
         true
     }
@@ -441,12 +434,23 @@ impl Tessellator {
     // (PriorityQ is still used for intersection vertices added during sweep)
 
     fn pq_is_empty(&self) -> bool {
-        self.sorted_event_pos >= self.sorted_events.len()
+        self.sorted_events_min() == INVALID
             && self.pq.as_ref().map_or(true, |pq| pq.is_empty())
     }
 
+    fn sorted_events_min(&self) -> VertIdx {
+        // Return the first non-INVALID entry at or after sorted_event_pos.
+        let mut pos = self.sorted_event_pos;
+        while pos < self.sorted_events.len() {
+            let v = self.sorted_events[pos];
+            if v != INVALID { return v; }
+            pos += 1;
+        }
+        INVALID
+    }
+
     fn pq_minimum(&self) -> VertIdx {
-        let sort_min = self.sorted_events.get(self.sorted_event_pos).copied().unwrap_or(INVALID);
+        let sort_min = self.sorted_events_min();
         let heap_min = self.pq.as_ref().map_or(INVALID, |pq| if !pq.is_empty() { pq.minimum() } else { INVALID });
 
         match (sort_min, heap_min) {
@@ -465,18 +469,36 @@ impl Tessellator {
     fn pq_extract_min(&mut self) -> VertIdx {
         let v = self.pq_minimum();
         if v == INVALID { return INVALID; }
-        // Determine which queue it came from
-        let sort_min = self.sorted_events.get(self.sorted_event_pos).copied().unwrap_or(INVALID);
-        if sort_min == v {
-            self.sorted_event_pos += 1;
+
+        if self.sorted_events_min() == v {
+            // Consume from sorted_events: advance past INVALID slots and then past v.
+            while self.sorted_event_pos < self.sorted_events.len() {
+                let s = self.sorted_events[self.sorted_event_pos];
+                self.sorted_event_pos += 1;
+                if s != INVALID { break; } // consumed v
+            }
         } else {
-            self.pq.as_mut().unwrap().extract_min();
+            // Comes from the dynamic heap (intersection vertex).
+            if let Some(ref mut pq) = self.pq {
+                pq.extract_min();
+            }
         }
         v
     }
 
     fn pq_delete(&mut self, handle: i32) {
-        self.pq.as_mut().unwrap().delete(handle);
+        if handle >= 0 {
+            // Heap-phase handle (intersection vertex)
+            if let Some(ref mut pq) = self.pq {
+                pq.delete(handle);
+            }
+        } else {
+            // Sorted-events handle: mark the slot as INVALID
+            let idx = (-(handle + 1)) as usize;
+            if idx < self.sorted_events.len() {
+                self.sorted_events[idx] = INVALID;
+            }
+        }
     }
 
     fn pq_insert(&mut self, v: VertIdx) -> i32 {

@@ -9,3 +9,4 @@ crate-type = ["cdylib"]
 [dependencies]
 tess2-rust = { path = "../.." }
 wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"

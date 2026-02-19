@@ -229,6 +229,48 @@ fn avoids_crash_while_finding_intersection() {
     let _ = tessellate_positive_triangles(&mut tess);
 }
 
+/// Demo shapes: butterfly (self-intersecting bowtie contour) should not panic
+#[test]
+fn demo_butterfly_no_crash() {
+    use std::f64::consts::PI;
+    let butterfly: &[f32] = &[-1.5, -1.0, 0.0, 0.0, 1.5, -1.0, 1.5, 1.0, 0.0, 0.0, -1.5, 1.0];
+    for wr in [WindingRule::Odd, WindingRule::NonZero, WindingRule::Positive,
+               WindingRule::Negative, WindingRule::AbsGeqTwo] {
+        let mut tess = Tessellator::new();
+        tess.add_contour(2, butterfly);
+        let _ = tess.tessellate(wr, ElementType::Polygons, 3, 2, None);
+    }
+
+    // Five-pointed star (pentagram)
+    let n = 5usize;
+    let step = PI * 2.0 / n as f64;
+    let mut star: Vec<f32> = Vec::new();
+    for i in 0..n {
+        let angle = -PI / 2.0 + i as f64 * step * 2.0;
+        star.push(angle.cos() as f32);
+        star.push(angle.sin() as f32);
+    }
+    for wr in [WindingRule::Odd, WindingRule::NonZero, WindingRule::Positive,
+               WindingRule::Negative, WindingRule::AbsGeqTwo] {
+        let mut tess = Tessellator::new();
+        tess.add_contour(2, &star);
+        let _ = tess.tessellate(wr, ElementType::Polygons, 3, 2, None);
+    }
+
+    // Nested squares (3 contours with various winding directions)
+    for wr in [WindingRule::Odd, WindingRule::NonZero, WindingRule::Positive,
+               WindingRule::Negative, WindingRule::AbsGeqTwo] {
+        let mut tess = Tessellator::new();
+        tess.set_option(TessOption::ReverseContours, false);
+        tess.add_contour(2, &[-3.0f32,-3.0, 3.0,-3.0, 3.0,3.0, -3.0,3.0]);
+        tess.set_option(TessOption::ReverseContours, true);
+        tess.add_contour(2, &[-2.0f32,-2.0, -2.0,2.0, 2.0,2.0, 2.0,-2.0]);
+        tess.set_option(TessOption::ReverseContours, false);
+        tess.add_contour(2, &[-1.0f32,-1.0, 1.0,-1.0, 1.0,1.0, -1.0,1.0]);
+        let _ = tess.tessellate(wr, ElementType::Polygons, 3, 2, None);
+    }
+}
+
 /// AvoidsCrashInAddRightEdges: another complex mixed contour → no crash
 #[test]
 fn avoids_crash_in_add_right_edges() {

@@ -1,4 +1,5 @@
 /target
+demo_test*
 /demo/public/pkg
 /demo/public/dist
 /demo/dist
