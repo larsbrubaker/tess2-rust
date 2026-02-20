@@ -49,7 +49,7 @@ export function init(container: HTMLElement): void {
       showInput: showInputCb.checked,
       inputContours: [VERTS],
     });
-    statsEl.textContent = `${result.triangleCount} triangle(s) · ${result.vertices.length/2} vertices`;
+    statsEl.textContent = `${result.elementCount} triangle(s) · ${result.vertices.length/2} vertices`;
   }
 
   windingSel.addEventListener('change', render);

@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "dev": "bun run demo/dev.ts"
+  }
+}

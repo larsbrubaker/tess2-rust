@@ -36,7 +36,7 @@ export function init(container: HTMLElement): void {
     const canvas = makeCanvas(SIZE, SIZE);
     const result = tessellate([{ vertices: BUTTERFLY, reversed: false }], wr);
 
-    if (result && result.triangleCount > 0) {
+    if (result && result.elementCount > 0) {
       drawTessellation(canvas, result.vertices, result.elements, {
         fillColor: COLORS.fill,
         showInput: true,
@@ -52,7 +52,7 @@ export function init(container: HTMLElement): void {
 
     const triCount = document.createElement('div');
     triCount.className = 'winding-tri-count';
-    triCount.textContent = result ? `${result.triangleCount} tri` : 'failed';
+    triCount.textContent = result ? `${result.elementCount} tri` : 'failed';
 
     cell.appendChild(label);
     cell.appendChild(canvas);

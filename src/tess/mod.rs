@@ -7,12 +7,19 @@
 // The C code is split across tess.c and sweep.c; they're merged here since both
 // share the same internal state (TESStesselator).
 
-use crate::dict::{Dict, NodeIdx, DICT_HEAD};
-use crate::geom::{
-    edge_intersect, edge_sign, vert_eq, vert_leq, Real,
+mod geometry;
+mod output;
+#[cfg(test)]
+mod tests;
+
+use geometry::{
+    check_orientation, compute_intersect_coords, compute_normal, dot, is_valid_coord, long_axis,
 };
-use crate::mesh::{EdgeIdx, Mesh, VertIdx, INVALID, V_HEAD, F_HEAD, E_HEAD};
-use crate::priorityq::{PriorityQ, INVALID_HANDLE};
+
+use crate::dict::{Dict, NodeIdx, DICT_HEAD};
+use crate::geom::{edge_intersect, edge_sign, vert_eq, vert_leq, Real};
+use crate::mesh::{EdgeIdx, Mesh, VertIdx, E_HEAD, INVALID, V_HEAD};
+use crate::priorityq::INVALID_HANDLE;
 use crate::sweep::ActiveRegion;
 
 // ─────────────────────────────── Public types ──────────────────────────────────
@@ -68,7 +75,10 @@ pub struct Tessellator {
 
     // Sweep state
     dict: Dict,
-    pq: Option<PriorityQ>,
+    /// Intersection vertices inserted during sweep (heap replacement).
+    /// Each entry is a VertIdx; ordering is done by coordinate lookup.
+    intersection_verts: Vec<VertIdx>,
+    next_isect_handle: i32,
     event: VertIdx,
     event_s: Real,
     event_t: Real,
@@ -88,6 +98,8 @@ pub struct Tessellator {
     // Primary event queue: pre-sorted vertices for the initial sweep phase
     sorted_events: Vec<VertIdx>,
     sorted_event_pos: usize,
+    sweep_event_num: u32,
+    trace_enabled: bool,
 }
 
 impl Tessellator {
@@ -104,7 +116,8 @@ impl Tessellator {
             reverse_contours: false,
             winding_rule: WindingRule::Odd,
             dict: Dict::new(),
-            pq: None,
+            intersection_verts: Vec::new(),
+            next_isect_handle: 0,
             event: INVALID,
             event_s: 0.0,
             event_t: 0.0,
@@ -118,6 +131,8 @@ impl Tessellator {
             vertex_index_counter: 0,
             sorted_events: Vec::new(),
             sorted_event_pos: 0,
+            sweep_event_num: 0,
+            trace_enabled: std::env::var("TESS_TRACE").is_ok(),
         }
     }
 
@@ -143,7 +158,11 @@ impl Tessellator {
         for i in 0..count {
             let cx = vertices[i * size];
             let cy = vertices[i * size + 1];
-            let cz = if size > 2 { vertices[i * size + 2] } else { 0.0 };
+            let cz = if size > 2 {
+                vertices[i * size + 2]
+            } else {
+                0.0
+            };
 
             if !is_valid_coord(cx) || !is_valid_coord(cy) || (size > 2 && !is_valid_coord(cz)) {
                 self.status = TessStatus::InvalidInput;
@@ -154,7 +173,10 @@ impl Tessellator {
             if e == INVALID {
                 let new_e = match mesh.make_edge() {
                     Some(v) => v,
-                    None => { self.status = TessStatus::OutOfMemory; return; }
+                    None => {
+                        self.status = TessStatus::OutOfMemory;
+                        return;
+                    }
                 };
                 e = new_e;
                 if !mesh.splice(e, e ^ 1) {
@@ -230,12 +252,24 @@ impl Tessellator {
 
     // ─────── Accessors ────────────────────────────────────────────────────────
 
-    pub fn vertex_count(&self) -> usize { self.out_vertex_count }
-    pub fn element_count(&self) -> usize { self.out_element_count }
-    pub fn vertices(&self) -> &[f32] { &self.out_vertices }
-    pub fn vertex_indices(&self) -> &[u32] { &self.out_vertex_indices }
-    pub fn elements(&self) -> &[u32] { &self.out_elements }
-    pub fn get_status(&self) -> TessStatus { self.status }
+    pub fn vertex_count(&self) -> usize {
+        self.out_vertex_count
+    }
+    pub fn element_count(&self) -> usize {
+        self.out_element_count
+    }
+    pub fn vertices(&self) -> &[f32] {
+        &self.out_vertices
+    }
+    pub fn vertex_indices(&self) -> &[u32] {
+        &self.out_vertex_indices
+    }
+    pub fn elements(&self) -> &[u32] {
+        &self.out_elements
+    }
+    pub fn get_status(&self) -> TessStatus {
+        self.status
+    }
 
     // ─────── Projection ───────────────────────────────────────────────────────
 
@@ -265,19 +299,32 @@ impl Tessellator {
                 mesh.verts[v as usize].t = dot(&c, &tu);
                 v = mesh.verts[v as usize].next;
             }
-            if computed_normal { check_orientation(mesh); }
+            if computed_normal {
+                check_orientation(mesh);
+            }
 
             let mut first = true;
             let mut v = mesh.verts[V_HEAD as usize].next;
             while v != V_HEAD {
                 let vs = mesh.verts[v as usize].s;
                 let vt = mesh.verts[v as usize].t;
-                if first { self.bmin = [vs, vt]; self.bmax = [vs, vt]; first = false; }
-                else {
-                    if vs < self.bmin[0] { self.bmin[0] = vs; }
-                    if vs > self.bmax[0] { self.bmax[0] = vs; }
-                    if vt < self.bmin[1] { self.bmin[1] = vt; }
-                    if vt > self.bmax[1] { self.bmax[1] = vt; }
+                if first {
+                    self.bmin = [vs, vt];
+                    self.bmax = [vs, vt];
+                    first = false;
+                } else {
+                    if vs < self.bmin[0] {
+                        self.bmin[0] = vs;
+                    }
+                    if vs > self.bmax[0] {
+                        self.bmax[0] = vs;
+                    }
+                    if vt < self.bmin[1] {
+                        self.bmin[1] = vt;
+                    }
+                    if vt > self.bmax[1] {
+                        self.bmax[1] = vt;
+                    }
                 }
                 v = mesh.verts[v as usize].next;
             }
@@ -288,21 +335,37 @@ impl Tessellator {
     // ─────── Main interior computation ───────────────────────────────────────
 
     fn compute_interior(&mut self) -> bool {
-        if !self.remove_degenerate_edges() { return false; }
-        if !self.init_priority_queue() { return false; }
-        if !self.init_edge_dict() { return false; }
+        self.sweep_event_num = 0;
+
+        if !self.remove_degenerate_edges() {
+            return false;
+        }
+        if !self.init_priority_queue() {
+            return false;
+        }
+        if !self.init_edge_dict() {
+            return false;
+        }
 
         loop {
-            if self.pq_is_empty() { break; }
+            if self.pq_is_empty() {
+                break;
+            }
 
             let v = self.pq_extract_min();
-            if v == INVALID { break; }
+            if v == INVALID {
+                break;
+            }
 
             // Coalesce coincident vertices
             loop {
-                if self.pq_is_empty() { break; }
+                if self.pq_is_empty() {
+                    break;
+                }
                 let next_v = self.pq_minimum();
-                if next_v == INVALID { break; }
+                if next_v == INVALID {
+                    break;
+                }
                 let (v_s, v_t) = {
                     let mesh = self.mesh.as_ref().unwrap();
                     (mesh.verts[v as usize].s, mesh.verts[v as usize].t)
@@ -311,13 +374,17 @@ impl Tessellator {
                     let mesh = self.mesh.as_ref().unwrap();
                     (mesh.verts[next_v as usize].s, mesh.verts[next_v as usize].t)
                 };
-                if !vert_eq(v_s, v_t, nv_s, nv_t) { break; }
+                if !vert_eq(v_s, v_t, nv_s, nv_t) {
+                    break;
+                }
                 let next_v = self.pq_extract_min();
                 // Merge next_v into v
                 let an1 = self.mesh.as_ref().unwrap().verts[v as usize].an_edge;
                 let an2 = self.mesh.as_ref().unwrap().verts[next_v as usize].an_edge;
                 if an1 != INVALID && an2 != INVALID {
-                    if !self.mesh.as_mut().unwrap().splice(an1, an2) { return false; }
+                    if !self.mesh.as_mut().unwrap().splice(an1, an2) {
+                        return false;
+                    }
                 }
             }
 
@@ -329,21 +396,57 @@ impl Tessellator {
             self.event_s = v_s;
             self.event_t = v_t;
 
-            if !self.sweep_event(v) { return false; }
+            if !self.sweep_event(v) {
+                return false;
+            }
         }
 
         self.done_edge_dict();
 
+        let trace = self.trace_enabled;
         if let Some(ref mut mesh) = self.mesh {
-            if !mesh.tessellate_interior() { return false; }
-            if self.process_cdt { mesh.refine_delaunay(); }
+            if trace {
+                let mut inside = 0u32;
+                let mut outside = 0u32;
+                let mut f = mesh.faces[crate::mesh::F_HEAD as usize].next;
+                while f != crate::mesh::F_HEAD {
+                    let an = mesh.faces[f as usize].an_edge;
+                    let mut edge_count = 0u32;
+                    if an != INVALID {
+                        let mut e = an;
+                        loop {
+                            edge_count += 1;
+                            e = mesh.edges[e as usize].lnext;
+                            if e == an { break; }
+                            if edge_count > 10000 { break; }
+                        }
+                    }
+                    if mesh.faces[f as usize].inside {
+                        inside += 1;
+                        eprintln!("R FACE inside edges={}", edge_count);
+                    } else {
+                        outside += 1;
+                    }
+                    f = mesh.faces[f as usize].next;
+                }
+                eprintln!("R FACES inside={} outside={}", inside, outside);
+            }
+            if !mesh.tessellate_interior() {
+                return false;
+            }
+            if self.process_cdt {
+                mesh.refine_delaunay();
+            }
         }
         true
     }
 
     fn remove_degenerate_edges(&mut self) -> bool {
         // Mirrors C RemoveDegenerateEdges exactly
-        let mesh = match self.mesh.as_mut() { Some(m) => m, None => return true };
+        let mesh = match self.mesh.as_mut() {
+            Some(m) => m,
+            None => return true,
+        };
         let mut e = mesh.edges[E_HEAD as usize].next;
         while e != E_HEAD {
             let mut e_next = mesh.edges[e as usize].next;
@@ -351,7 +454,8 @@ impl Tessellator {
 
             let org = mesh.edges[e as usize].org;
             let dst = mesh.dst(e);
-            let valid = org != INVALID && dst != INVALID
+            let valid = org != INVALID
+                && dst != INVALID
                 && (org as usize) < mesh.verts.len()
                 && (dst as usize) < mesh.verts.len();
 
@@ -362,7 +466,9 @@ impl Tessellator {
                 if vert_eq(os, ot, ds, dt) && mesh.edges[e_lnext as usize].lnext != e {
                     // Zero-length edge, contour has at least 3 edges
                     mesh.splice(e_lnext, e);
-                    if !mesh.delete_edge(e) { return false; }
+                    if !mesh.delete_edge(e) {
+                        return false;
+                    }
                     e = e_lnext;
                     e_lnext = mesh.edges[e as usize].lnext;
                 }
@@ -380,13 +486,17 @@ impl Tessellator {
                     let w2 = mesh.edges[(e_lnext ^ 1) as usize].winding;
                     mesh.edges[e as usize].winding += w1;
                     mesh.edges[(e ^ 1) as usize].winding += w2;
-                    if !mesh.delete_edge(e_lnext) { return false; }
+                    if !mesh.delete_edge(e_lnext) {
+                        return false;
+                    }
                 }
                 // Advance e_next past e or its sym
                 if e == e_next || e == (e_next ^ 1) {
                     e_next = mesh.edges[e_next as usize].next;
                 }
-                if !mesh.delete_edge(e) { return false; }
+                if !mesh.delete_edge(e) {
+                    return false;
+                }
             }
 
             e = e_next;
@@ -395,10 +505,16 @@ impl Tessellator {
     }
 
     fn init_priority_queue(&mut self) -> bool {
-        let mesh = match self.mesh.as_ref() { Some(m) => m, None => return true };
+        let mesh = match self.mesh.as_ref() {
+            Some(m) => m,
+            None => return true,
+        };
         let mut count = 0usize;
         let mut v = mesh.verts[V_HEAD as usize].next;
-        while v != V_HEAD { count += 1; v = mesh.verts[v as usize].next; }
+        while v != V_HEAD {
+            count += 1;
+            v = mesh.verts[v as usize].next;
+        }
 
         // Collect (s,t,vert_idx) and sort ascending by vert_leq.
         let mut vert_coords: Vec<(Real, Real, VertIdx)> = Vec::with_capacity(count);
@@ -410,15 +526,19 @@ impl Tessellator {
         drop(mesh);
 
         vert_coords.sort_unstable_by(|a, b| {
-            if vert_leq(a.0, a.1, b.0, b.1) { std::cmp::Ordering::Less }
-            else { std::cmp::Ordering::Greater }
+            if vert_leq(a.0, a.1, b.0, b.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            }
         });
 
         // Build the sorted event queue. Store each vertex's position as a negative
         // handle (convention: -(index+1)) so that pq_delete can invalidate it.
         self.sorted_events = vert_coords.iter().map(|&(_, _, v)| v).collect();
         self.sorted_event_pos = 0;
-        self.pq = None; // Dynamic heap used only for intersection vertices added later
+        self.intersection_verts.clear();
+        self.next_isect_handle = 0;
 
         // Assign each initial vertex a handle encoding its sorted_events index.
         for (idx, &(_, _, v)) in vert_coords.iter().enumerate() {
@@ -429,31 +549,48 @@ impl Tessellator {
         true
     }
 
-    // The event queue is just the sorted vertex list
-    // We use these fields instead of PriorityQ for the main sweep
-    // (PriorityQ is still used for intersection vertices added during sweep)
-
     fn pq_is_empty(&self) -> bool {
-        self.sorted_events_min() == INVALID
-            && self.pq.as_ref().map_or(true, |pq| pq.is_empty())
+        self.sorted_events_min() == INVALID && self.intersection_verts.is_empty()
     }
 
     fn sorted_events_min(&self) -> VertIdx {
-        // Return the first non-INVALID entry at or after sorted_event_pos.
         let mut pos = self.sorted_event_pos;
         while pos < self.sorted_events.len() {
             let v = self.sorted_events[pos];
-            if v != INVALID { return v; }
+            if v != INVALID {
+                return v;
+            }
             pos += 1;
         }
         INVALID
     }
 
+    /// Find the minimum intersection vertex by scanning with coordinate comparison.
+    fn isect_minimum(&self) -> VertIdx {
+        if self.intersection_verts.is_empty() {
+            return INVALID;
+        }
+        let mesh = self.mesh.as_ref().unwrap();
+        let mut best = INVALID;
+        for &v in &self.intersection_verts {
+            if best == INVALID {
+                best = v;
+            } else {
+                let (bs, bt) = (mesh.verts[best as usize].s, mesh.verts[best as usize].t);
+                let (vs, vt) = (mesh.verts[v as usize].s, mesh.verts[v as usize].t);
+                if vert_leq(vs, vt, bs, bt) {
+                    best = v;
+                }
+            }
+        }
+        best
+    }
+
     fn pq_minimum(&self) -> VertIdx {
         let sort_min = self.sorted_events_min();
-        let heap_min = self.pq.as_ref().map_or(INVALID, |pq| if !pq.is_empty() { pq.minimum() } else { INVALID });
+        let isect_min = self.isect_minimum();
 
-        match (sort_min, heap_min) {
+        match (sort_min, isect_min) {
             (INVALID, INVALID) => INVALID,
             (INVALID, h) => h,
             (s, INVALID) => s,
@@ -461,26 +598,33 @@ impl Tessellator {
                 let mesh = self.mesh.as_ref().unwrap();
                 let (ss, st) = (mesh.verts[s as usize].s, mesh.verts[s as usize].t);
                 let (hs, ht) = (mesh.verts[h as usize].s, mesh.verts[h as usize].t);
-                if vert_leq(ss, st, hs, ht) { s } else { h }
+                if vert_leq(ss, st, hs, ht) {
+                    s
+                } else {
+                    h
+                }
             }
         }
     }
 
     fn pq_extract_min(&mut self) -> VertIdx {
         let v = self.pq_minimum();
-        if v == INVALID { return INVALID; }
+        if v == INVALID {
+            return INVALID;
+        }
 
         if self.sorted_events_min() == v {
-            // Consume from sorted_events: advance past INVALID slots and then past v.
             while self.sorted_event_pos < self.sorted_events.len() {
                 let s = self.sorted_events[self.sorted_event_pos];
                 self.sorted_event_pos += 1;
-                if s != INVALID { break; } // consumed v
+                if s != INVALID {
+                    break;
+                }
             }
         } else {
-            // Comes from the dynamic heap (intersection vertex).
-            if let Some(ref mut pq) = self.pq {
-                pq.extract_min();
+            // Remove from intersection_verts
+            if let Some(pos) = self.intersection_verts.iter().position(|&x| x == v) {
+                self.intersection_verts.swap_remove(pos);
             }
         }
         v
@@ -488,9 +632,10 @@ impl Tessellator {
 
     fn pq_delete(&mut self, handle: i32) {
         if handle >= 0 {
-            // Heap-phase handle (intersection vertex)
-            if let Some(ref mut pq) = self.pq {
-                pq.delete(handle);
+            // Intersection vertex handle: scan and remove by handle index
+            let vert_idx = handle as u32;
+            if let Some(pos) = self.intersection_verts.iter().position(|&x| x == vert_idx) {
+                self.intersection_verts.swap_remove(pos);
             }
         } else {
             // Sorted-events handle: mark the slot as INVALID
@@ -502,11 +647,9 @@ impl Tessellator {
     }
 
     fn pq_insert(&mut self, v: VertIdx) -> i32 {
-        if self.pq.is_none() {
-            self.pq = Some(PriorityQ::new(16, |_, _| true));
-            self.pq.as_mut().unwrap().init();
-        }
-        self.pq.as_mut().unwrap().insert(v)
+        self.intersection_verts.push(v);
+        // Return the VertIdx itself as the handle (positive, so pq_delete knows it's an intersection vertex)
+        v as i32
     }
 
     // ─────── Edge dictionary initialization ──────────────────────────────────
@@ -561,10 +704,15 @@ impl Tessellator {
     }
 
     /// Insert a region into the dict at the sorted position (using edge_leq).
-    /// Returns the new node index.
+    /// Starts search from DICT_HEAD (tail). Returns the new node index.
     fn dict_insert_region(&mut self, reg: RegionIdx) -> NodeIdx {
-        // Walk backward from head, stopping when leq(node_key, reg) == true (or node_key is INVALID/sentinel)
-        let mut node = DICT_HEAD;
+        self.dict_insert_before(reg, DICT_HEAD)
+    }
+
+    /// Insert a region before `start_node` in the dict, walking backward
+    /// until the correct sorted position is found. Mirrors C's dictInsertBefore.
+    fn dict_insert_before(&mut self, reg: RegionIdx, start_node: NodeIdx) -> NodeIdx {
+        let mut node = start_node;
         loop {
             node = self.dict.nodes[node as usize].prev;
             let key = self.dict.nodes[node as usize].key;
@@ -580,7 +728,11 @@ impl Tessellator {
         let before = self.dict.nodes[after as usize].next;
         let new_node = self.dict.nodes.len() as NodeIdx;
         use crate::dict::DictNode;
-        let new_dict_node = DictNode { key: reg, next: before, prev: after };
+        let new_dict_node = DictNode {
+            key: reg,
+            next: before,
+            prev: after,
+        };
         self.dict.nodes.push(new_dict_node);
         self.dict.nodes[after as usize].next = new_node;
         self.dict.nodes[before as usize].prev = new_node;
@@ -600,8 +752,12 @@ impl Tessellator {
 
         // Add bottom sentinel first (at tmin), then top sentinel (at tmax).
         // After insertion with EdgeLeq ordering, top ends up before bottom in the dict.
-        if !self.add_sentinel(smin, smax, tmin) { return false; }
-        if !self.add_sentinel(smin, smax, tmax) { return false; }
+        if !self.add_sentinel(smin, smax, tmin) {
+            return false;
+        }
+        if !self.add_sentinel(smin, smax, tmax) {
+            return false;
+        }
 
         true
     }
@@ -667,8 +823,12 @@ impl Tessellator {
     fn edge_leq(&self, reg1: RegionIdx, reg2: RegionIdx) -> bool {
         let e1 = self.region(reg1).e_up;
         let e2 = self.region(reg2).e_up;
-        if e1 == INVALID { return true; }
-        if e2 == INVALID { return false; }
+        if e1 == INVALID {
+            return true;
+        }
+        if e2 == INVALID {
+            return false;
+        }
         let mesh = self.mesh.as_ref().unwrap();
 
         let e1_dst = mesh.dst(e1);
@@ -702,7 +862,7 @@ impl Tessellator {
     }
 
     /// Insert a new region below `reg_above` with upper edge `e_new_up`.
-    /// Mirrors C's AddRegionBelow which calls ComputeWinding internally.
+    /// Mirrors C's AddRegionBelow + ComputeWinding.
     fn add_region_below(&mut self, _reg_above: RegionIdx, e_new_up: EdgeIdx) -> RegionIdx {
         let reg_new = self.alloc_region();
         {
@@ -713,7 +873,6 @@ impl Tessellator {
             r.dirty = false;
         }
 
-        // Insert at sorted position (mirrors C dictInsert which starts from head)
         let new_node_idx = self.dict_insert_region(reg_new);
         if new_node_idx == INVALID {
             self.free_region(reg_new);
@@ -724,21 +883,7 @@ impl Tessellator {
         // Link the edge to the region
         self.mesh.as_mut().unwrap().edges[e_new_up as usize].active_region = reg_new;
 
-        // Compute winding number (C's AddRegionBelow calls ComputeWinding here)
         self.compute_winding(reg_new);
-
-        #[cfg(test)]
-        if std::env::var("TESS_DEBUG").is_ok() {
-            let org = self.mesh.as_ref().unwrap().edges[e_new_up as usize].org;
-            let (os, ot) = if org != INVALID {
-                (self.mesh.as_ref().unwrap().verts[org as usize].s,
-                 self.mesh.as_ref().unwrap().verts[org as usize].t)
-            } else { (0.0, 0.0) };
-            eprintln!("  add_region_below: reg_new={} e_up={} org=({:.3},{:.3}) winding={} inside={}",
-                reg_new, e_new_up, os, ot,
-                self.region(reg_new).winding_number,
-                self.region(reg_new).inside);
-        }
 
         reg_new
     }
@@ -759,7 +904,9 @@ impl Tessellator {
     fn fix_upper_edge(&mut self, reg: RegionIdx, new_edge: EdgeIdx) -> bool {
         let old_edge = self.region(reg).e_up;
         if old_edge != INVALID {
-            if !self.mesh.as_mut().unwrap().delete_edge(old_edge) { return false; }
+            if !self.mesh.as_mut().unwrap().delete_edge(old_edge) {
+                return false;
+            }
         }
         self.region_mut(reg).fix_upper_edge = false;
         self.region_mut(reg).e_up = new_edge;
@@ -779,22 +926,24 @@ impl Tessellator {
 
     fn compute_winding(&mut self, reg: RegionIdx) {
         let above = self.region_above(reg);
-        let above_winding = if above != INVALID { self.region(above).winding_number } else { 0 };
+        let above_winding = if above != INVALID {
+            self.region(above).winding_number
+        } else {
+            0
+        };
         let e_up = self.region(reg).e_up;
         let e_winding = if e_up != INVALID {
             self.mesh.as_ref().unwrap().edges[e_up as usize].winding
-        } else { 0 };
+        } else {
+            0
+        };
         let new_winding = above_winding + e_winding;
         let inside = self.is_winding_inside(new_winding);
-        #[cfg(test)]
-        if std::env::var("TESS_DEBUG").is_ok() {
-            let (es, et) = if e_up != INVALID {
-                let m = self.mesh.as_ref().unwrap();
-                let org = m.edges[e_up as usize].org;
-                if org != INVALID { (m.verts[org as usize].s, m.verts[org as usize].t) } else { (0.0, 0.0) }
-            } else { (0.0, 0.0) };
-            eprintln!("  compute_winding: reg={} above={} above_wnd={} e_up={} e_wnd={} → winding={} inside={}  eUp_org=({:.1},{:.1})",
-                reg, above, above_winding, e_up, e_winding, new_winding, inside, es, et);
+        if self.trace_enabled {
+            eprintln!(
+                "R   COMPUTE_WINDING winding={} inside={} edge_winding={}",
+                new_winding, inside as i32, e_winding
+            );
         }
         self.region_mut(reg).winding_number = new_winding;
         self.region_mut(reg).inside = inside;
@@ -806,10 +955,31 @@ impl Tessellator {
             let lface = self.mesh.as_ref().unwrap().edges[e as usize].lface;
             if lface != INVALID {
                 let inside = self.region(reg).inside;
-                #[cfg(test)]
-                if std::env::var("TESS_DEBUG").is_ok() {
-                    eprintln!("  finish_region: reg={} e_up={} lface={} inside={} winding={}",
-                        reg, e, lface, inside, self.region(reg).winding_number);
+                if self.trace_enabled {
+                    let mesh = self.mesh.as_ref().unwrap();
+                    let mut edge_count = 0u32;
+                    let an = mesh.faces[lface as usize].an_edge;
+                    if an != INVALID {
+                        let mut iter = an;
+                        loop {
+                            edge_count += 1;
+                            iter = mesh.edges[iter as usize].lnext;
+                            if iter == an || edge_count > 10000 { break; }
+                        }
+                    }
+                    let org = mesh.edges[e as usize].org;
+                    let (os, ot) = if org != INVALID {
+                        (mesh.verts[org as usize].s, mesh.verts[org as usize].t)
+                    } else {
+                        (0.0, 0.0)
+                    };
+                    eprintln!(
+                        "R   FINISH_REGION inside={} winding={} face_edges={} eUp_org=({:.2},{:.2})",
+                        inside as i32,
+                        self.region(reg).winding_number,
+                        edge_count,
+                        os, ot
+                    );
                 }
                 self.mesh.as_mut().unwrap().faces[lface as usize].inside = inside;
                 self.mesh.as_mut().unwrap().faces[lface as usize].an_edge = e;
@@ -822,17 +992,25 @@ impl Tessellator {
     fn top_left_region(&mut self, reg: RegionIdx) -> RegionIdx {
         let org = {
             let e = self.region(reg).e_up;
-            if e == INVALID { return INVALID; }
+            if e == INVALID {
+                return INVALID;
+            }
             self.mesh.as_ref().unwrap().edges[e as usize].org
         };
         let mut r = reg;
         loop {
             r = self.region_above(r);
-            if r == INVALID { return INVALID; }
+            if r == INVALID {
+                return INVALID;
+            }
             let e = self.region(r).e_up;
-            if e == INVALID { return INVALID; }
+            if e == INVALID {
+                return INVALID;
+            }
             let e_org = self.mesh.as_ref().unwrap().edges[e as usize].org;
-            if e_org != org { break; }
+            if e_org != org {
+                break;
+            }
         }
         // r is now above the topmost region with same origin
         // Check if we need to fix it
@@ -846,7 +1024,9 @@ impl Tessellator {
                 Some(e) => e,
                 None => return INVALID,
             };
-            if !self.fix_upper_edge(r, new_e) { return INVALID; }
+            if !self.fix_upper_edge(r, new_e) {
+                return INVALID;
+            }
             r = self.region_above(r);
         }
         r
@@ -855,17 +1035,25 @@ impl Tessellator {
     fn top_right_region(&self, reg: RegionIdx) -> RegionIdx {
         let dst = {
             let e = self.region(reg).e_up;
-            if e == INVALID { return INVALID; }
+            if e == INVALID {
+                return INVALID;
+            }
             self.mesh.as_ref().unwrap().dst(e)
         };
         let mut r = reg;
         loop {
             r = self.region_above(r);
-            if r == INVALID { return INVALID; }
+            if r == INVALID {
+                return INVALID;
+            }
             let e = self.region(r).e_up;
-            if e == INVALID { return INVALID; }
+            if e == INVALID {
+                return INVALID;
+            }
             let e_dst = self.mesh.as_ref().unwrap().dst(e);
-            if e_dst != dst { break; }
+            if e_dst != dst {
+                break;
+            }
         }
         r
     }
@@ -877,24 +1065,42 @@ impl Tessellator {
         while reg_prev != reg_last {
             self.region_mut(reg_prev).fix_upper_edge = false;
             let reg = self.region_below(reg_prev);
-            if reg == INVALID { break; }
+            if reg == INVALID {
+                break;
+            }
             let e = self.region(reg).e_up;
 
-            let e_org = if e != INVALID { self.mesh.as_ref().unwrap().edges[e as usize].org } else { INVALID };
-            let ep_org = if e_prev != INVALID { self.mesh.as_ref().unwrap().edges[e_prev as usize].org } else { INVALID };
+            let e_org = if e != INVALID {
+                self.mesh.as_ref().unwrap().edges[e as usize].org
+            } else {
+                INVALID
+            };
+            let ep_org = if e_prev != INVALID {
+                self.mesh.as_ref().unwrap().edges[e_prev as usize].org
+            } else {
+                INVALID
+            };
 
             if e_org != ep_org {
                 if !self.region(reg).fix_upper_edge {
                     self.finish_region(reg_prev);
                     break;
                 }
-                let ep_lprev = if e_prev != INVALID { self.mesh.as_ref().unwrap().lprev(e_prev) } else { INVALID };
+                let ep_lprev = if e_prev != INVALID {
+                    self.mesh.as_ref().unwrap().lprev(e_prev)
+                } else {
+                    INVALID
+                };
                 let e_sym = if e != INVALID { e ^ 1 } else { INVALID };
                 let new_e = if ep_lprev != INVALID && e_sym != INVALID {
                     self.mesh.as_mut().unwrap().connect(ep_lprev, e_sym)
-                } else { None };
+                } else {
+                    None
+                };
                 if let Some(ne) = new_e {
-                    if !self.fix_upper_edge(reg, ne) { return INVALID; }
+                    if !self.fix_upper_edge(reg, ne) {
+                        return INVALID;
+                    }
                 }
             }
 
@@ -927,15 +1133,21 @@ impl Tessellator {
         loop {
             self.add_region_below(reg_up, e ^ 1);
             e = self.mesh.as_ref().unwrap().edges[e as usize].onext;
-            if e == e_last { break; }
+            if e == e_last {
+                break;
+            }
         }
 
         // Determine e_top_left
         let e_top_left = if e_top_left == INVALID {
             let reg_below = self.region_below(reg_up);
-            if reg_below == INVALID { return; }
+            if reg_below == INVALID {
+                return;
+            }
             let rb_e = self.region(reg_below).e_up;
-            if rb_e == INVALID { return; }
+            if rb_e == INVALID {
+                return;
+            }
             self.mesh.as_ref().unwrap().rprev(rb_e)
         } else {
             e_top_left
@@ -947,19 +1159,30 @@ impl Tessellator {
 
         loop {
             let reg = self.region_below(reg_prev);
-            if reg == INVALID { break; }
+            if reg == INVALID {
+                break;
+            }
             let e = {
                 let re = self.region(reg).e_up;
-                if re == INVALID { break; }
+                if re == INVALID {
+                    break;
+                }
                 re ^ 1 // e = reg->eUp->Sym
             };
             let e_org = self.mesh.as_ref().unwrap().edges[e as usize].org;
-            let ep_org = if e_prev != INVALID { self.mesh.as_ref().unwrap().edges[e_prev as usize].org } else { INVALID };
-            if e_org != ep_org { break; }
+            let ep_org = if e_prev != INVALID {
+                self.mesh.as_ref().unwrap().edges[e_prev as usize].org
+            } else {
+                INVALID
+            };
+            if e_org != ep_org {
+                break;
+            }
 
             if e_prev != INVALID {
-                let ep_onext = self.mesh.as_ref().unwrap().edges[e_prev as usize].onext;
-                if ep_onext != e {
+                // C: if( e->Onext != ePrev ) { splice(e->Oprev, e); splice(ePrev->Oprev, e); }
+                let e_onext = self.mesh.as_ref().unwrap().edges[e as usize].onext;
+                if e_onext != e_prev {
                     let e_oprev = self.mesh.as_ref().unwrap().oprev(e);
                     self.mesh.as_mut().unwrap().splice(e_oprev, e);
                     let ep_oprev = self.mesh.as_ref().unwrap().oprev(e_prev);
@@ -1008,24 +1231,42 @@ impl Tessellator {
 
     fn check_for_right_splice(&mut self, reg_up: RegionIdx) -> bool {
         let reg_lo = self.region_below(reg_up);
-        if reg_lo == INVALID { return false; }
+        if reg_lo == INVALID {
+            return false;
+        }
         let e_up = self.region(reg_up).e_up;
         let e_lo = self.region(reg_lo).e_up;
-        if e_up == INVALID || e_lo == INVALID { return false; }
+        if e_up == INVALID || e_lo == INVALID {
+            return false;
+        }
 
         let mesh = self.mesh.as_ref().unwrap();
         let e_up_org = mesh.edges[e_up as usize].org;
         let e_lo_org = mesh.edges[e_lo as usize].org;
-        let (euo_s, euo_t) = (mesh.verts[e_up_org as usize].s, mesh.verts[e_up_org as usize].t);
-        let (elo_s, elo_t) = (mesh.verts[e_lo_org as usize].s, mesh.verts[e_lo_org as usize].t);
+        let (euo_s, euo_t) = (
+            mesh.verts[e_up_org as usize].s,
+            mesh.verts[e_up_org as usize].t,
+        );
+        let (elo_s, elo_t) = (
+            mesh.verts[e_lo_org as usize].s,
+            mesh.verts[e_lo_org as usize].t,
+        );
         let e_lo_dst = mesh.dst(e_lo);
-        let (eld_s, eld_t) = (mesh.verts[e_lo_dst as usize].s, mesh.verts[e_lo_dst as usize].t);
+        let (eld_s, eld_t) = (
+            mesh.verts[e_lo_dst as usize].s,
+            mesh.verts[e_lo_dst as usize].t,
+        );
         let e_up_dst = mesh.dst(e_up);
-        let (eud_s, eud_t) = (mesh.verts[e_up_dst as usize].s, mesh.verts[e_up_dst as usize].t);
+        let (eud_s, eud_t) = (
+            mesh.verts[e_up_dst as usize].s,
+            mesh.verts[e_up_dst as usize].t,
+        );
         drop(mesh);
 
         if vert_leq(euo_s, euo_t, elo_s, elo_t) {
-            if edge_sign(eld_s, eld_t, euo_s, euo_t, elo_s, elo_t) > 0.0 { return false; }
+            if edge_sign(eld_s, eld_t, euo_s, euo_t, elo_s, elo_t) > 0.0 {
+                return false;
+            }
             if !vert_eq(euo_s, euo_t, elo_s, elo_t) {
                 // Splice eUp->Org into eLo
                 self.mesh.as_mut().unwrap().split_edge(e_lo ^ 1);
@@ -1041,7 +1282,9 @@ impl Tessellator {
                 self.mesh.as_mut().unwrap().splice(e_lo_oprev, e_up);
             }
         } else {
-            if edge_sign(eud_s, eud_t, elo_s, elo_t, euo_s, euo_t) < 0.0 { return false; }
+            if edge_sign(eud_s, eud_t, elo_s, elo_t, euo_s, euo_t) < 0.0 {
+                return false;
+            }
             let reg_above = self.region_above(reg_up);
             if reg_above != INVALID {
                 self.region_mut(reg_above).dirty = true;
@@ -1056,32 +1299,56 @@ impl Tessellator {
 
     fn check_for_left_splice(&mut self, reg_up: RegionIdx) -> bool {
         let reg_lo = self.region_below(reg_up);
-        if reg_lo == INVALID { return false; }
+        if reg_lo == INVALID {
+            return false;
+        }
         let e_up = self.region(reg_up).e_up;
         let e_lo = self.region(reg_lo).e_up;
-        if e_up == INVALID || e_lo == INVALID { return false; }
+        if e_up == INVALID || e_lo == INVALID {
+            return false;
+        }
 
         let mesh = self.mesh.as_ref().unwrap();
         let e_up_dst = mesh.dst(e_up);
         let e_lo_dst = mesh.dst(e_lo);
         if vert_eq(
-            mesh.verts[e_up_dst as usize].s, mesh.verts[e_up_dst as usize].t,
-            mesh.verts[e_lo_dst as usize].s, mesh.verts[e_lo_dst as usize].t,
-        ) { return false; } // Same destination
+            mesh.verts[e_up_dst as usize].s,
+            mesh.verts[e_up_dst as usize].t,
+            mesh.verts[e_lo_dst as usize].s,
+            mesh.verts[e_lo_dst as usize].t,
+        ) {
+            return false;
+        } // Same destination
 
-        let (eud_s, eud_t) = (mesh.verts[e_up_dst as usize].s, mesh.verts[e_up_dst as usize].t);
-        let (eld_s, eld_t) = (mesh.verts[e_lo_dst as usize].s, mesh.verts[e_lo_dst as usize].t);
+        let (eud_s, eud_t) = (
+            mesh.verts[e_up_dst as usize].s,
+            mesh.verts[e_up_dst as usize].t,
+        );
+        let (eld_s, eld_t) = (
+            mesh.verts[e_lo_dst as usize].s,
+            mesh.verts[e_lo_dst as usize].t,
+        );
         let e_up_org = mesh.edges[e_up as usize].org;
         let e_lo_org = mesh.edges[e_lo as usize].org;
-        let (euo_s, euo_t) = (mesh.verts[e_up_org as usize].s, mesh.verts[e_up_org as usize].t);
-        let (elo_s, elo_t) = (mesh.verts[e_lo_org as usize].s, mesh.verts[e_lo_org as usize].t);
+        let (euo_s, euo_t) = (
+            mesh.verts[e_up_org as usize].s,
+            mesh.verts[e_up_org as usize].t,
+        );
+        let (elo_s, elo_t) = (
+            mesh.verts[e_lo_org as usize].s,
+            mesh.verts[e_lo_org as usize].t,
+        );
         drop(mesh);
 
         if vert_leq(eud_s, eud_t, eld_s, eld_t) {
-            if edge_sign(eud_s, eud_t, eld_s, eld_t, euo_s, euo_t) < 0.0 { return false; }
+            if edge_sign(eud_s, eud_t, eld_s, eld_t, euo_s, euo_t) < 0.0 {
+                return false;
+            }
             // eLo->Dst is above eUp: splice eLo->Dst into eUp
             let reg_above = self.region_above(reg_up);
-            if reg_above != INVALID { self.region_mut(reg_above).dirty = true; }
+            if reg_above != INVALID {
+                self.region_mut(reg_above).dirty = true;
+            }
             self.region_mut(reg_up).dirty = true;
             let new_e = match self.mesh.as_mut().unwrap().split_edge(e_up) {
                 Some(e) => e,
@@ -1095,7 +1362,9 @@ impl Tessellator {
                 self.mesh.as_mut().unwrap().faces[new_lface as usize].inside = inside;
             }
         } else {
-            if edge_sign(eld_s, eld_t, eud_s, eud_t, elo_s, elo_t) > 0.0 { return false; }
+            if edge_sign(eld_s, eld_t, eud_s, eud_t, elo_s, elo_t) > 0.0 {
+                return false;
+            }
             // eUp->Dst is below eLo: splice eUp->Dst into eLo
             self.region_mut(reg_up).dirty = true;
             self.region_mut(reg_lo).dirty = true;
@@ -1117,10 +1386,14 @@ impl Tessellator {
 
     fn check_for_intersect(&mut self, reg_up: RegionIdx) -> bool {
         let reg_lo = self.region_below(reg_up);
-        if reg_lo == INVALID { return false; }
+        if reg_lo == INVALID {
+            return false;
+        }
         let e_up = self.region(reg_up).e_up;
         let e_lo = self.region(reg_lo).e_up;
-        if e_up == INVALID || e_lo == INVALID { return false; }
+        if e_up == INVALID || e_lo == INVALID {
+            return false;
+        }
         if self.region(reg_up).fix_upper_edge || self.region(reg_lo).fix_upper_edge {
             return false;
         }
@@ -1132,9 +1405,13 @@ impl Tessellator {
         let dst_lo = mesh.dst(e_lo);
 
         if vert_eq(
-            mesh.verts[dst_up as usize].s, mesh.verts[dst_up as usize].t,
-            mesh.verts[dst_lo as usize].s, mesh.verts[dst_lo as usize].t,
-        ) { return false; }
+            mesh.verts[dst_up as usize].s,
+            mesh.verts[dst_up as usize].t,
+            mesh.verts[dst_lo as usize].s,
+            mesh.verts[dst_lo as usize].t,
+        ) {
+            return false;
+        }
 
         let (ou_s, ou_t) = (mesh.verts[org_up as usize].s, mesh.verts[org_up as usize].t);
         let (ol_s, ol_t) = (mesh.verts[org_lo as usize].s, mesh.verts[org_lo as usize].t);
@@ -1152,12 +1429,18 @@ impl Tessellator {
         // Quick rejection tests
         let t_min_up = ou_t.min(du_t);
         let t_max_lo = ol_t.max(dl_t);
-        if t_min_up > t_max_lo { return false; }
+        if t_min_up > t_max_lo {
+            return false;
+        }
 
         if vert_leq(ou_s, ou_t, ol_s, ol_t) {
-            if edge_sign(dl_s, dl_t, ou_s, ou_t, ol_s, ol_t) > 0.0 { return false; }
+            if edge_sign(dl_s, dl_t, ou_s, ou_t, ol_s, ol_t) > 0.0 {
+                return false;
+            }
         } else {
-            if edge_sign(du_s, du_t, ol_s, ol_t, ou_s, ou_t) < 0.0 { return false; }
+            if edge_sign(du_s, du_t, ol_s, ol_t, ou_s, ou_t) < 0.0 {
+                return false;
+            }
         }
 
         // Compute intersection
@@ -1188,8 +1471,10 @@ impl Tessellator {
             return false;
         }
 
-        if (!vert_eq(du_s, du_t, ev_s, ev_t) && edge_sign(du_s, du_t, ev_s, ev_t, isect_s, isect_t) >= 0.0)
-            || (!vert_eq(dl_s, dl_t, ev_s, ev_t) && edge_sign(dl_s, dl_t, ev_s, ev_t, isect_s, isect_t) <= 0.0)
+        if (!vert_eq(du_s, du_t, ev_s, ev_t)
+            && edge_sign(du_s, du_t, ev_s, ev_t, isect_s, isect_t) >= 0.0)
+            || (!vert_eq(dl_s, dl_t, ev_s, ev_t)
+                && edge_sign(dl_s, dl_t, ev_s, ev_t, isect_s, isect_t) <= 0.0)
         {
             if vert_eq(dl_s, dl_t, ev_s, ev_t) {
                 // Splice dstLo into eUp
@@ -1198,7 +1483,9 @@ impl Tessellator {
                 let e_up2 = self.region(reg_up).e_up;
                 self.mesh.as_mut().unwrap().splice(e_lo_sym, e_up2);
                 let reg_up2 = self.top_left_region(reg_up);
-                if reg_up2 == INVALID { return false; }
+                if reg_up2 == INVALID {
+                    return false;
+                }
                 let rb = self.region_below(reg_up2);
                 let rb_e = self.region(rb).e_up;
                 let rl2 = self.region_below(rb);
@@ -1215,11 +1502,21 @@ impl Tessellator {
                 self.mesh.as_mut().unwrap().splice(e_up_lnext, e_lo_oprev);
                 let reg_lo2 = reg_up;
                 let reg_up2 = self.top_right_region(reg_up);
-                if reg_up2 == INVALID { return false; }
-                let e_finish = self.mesh.as_ref().unwrap().rprev(self.region(self.region_below(reg_up2)).e_up);
+                if reg_up2 == INVALID {
+                    return false;
+                }
+                let e_finish = self
+                    .mesh
+                    .as_ref()
+                    .unwrap()
+                    .rprev(self.region(self.region_below(reg_up2)).e_up);
                 self.region_mut(reg_lo2).e_up = self.mesh.as_ref().unwrap().oprev(e_lo);
                 let lo_end = self.finish_left_regions(reg_lo2, INVALID);
-                let e_lo_onext = if lo_end != INVALID { self.mesh.as_ref().unwrap().edges[lo_end as usize].onext } else { INVALID };
+                let e_lo_onext = if lo_end != INVALID {
+                    self.mesh.as_ref().unwrap().edges[lo_end as usize].onext
+                } else {
+                    INVALID
+                };
                 let e_up_rprev = self.mesh.as_ref().unwrap().rprev(e_up);
                 self.add_right_edges(reg_up2, e_lo_onext, e_up_rprev, e_finish, true);
                 return true;
@@ -1227,7 +1524,9 @@ impl Tessellator {
             // Split edges
             if edge_sign(du_s, du_t, ev_s, ev_t, isect_s, isect_t) >= 0.0 {
                 let reg_above = self.region_above(reg_up);
-                if reg_above != INVALID { self.region_mut(reg_above).dirty = true; }
+                if reg_above != INVALID {
+                    self.region_mut(reg_above).dirty = true;
+                }
                 self.region_mut(reg_up).dirty = true;
                 self.mesh.as_mut().unwrap().split_edge(e_up ^ 1);
                 let e_up2 = self.region(reg_up).e_up;
@@ -1267,21 +1566,22 @@ impl Tessellator {
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].s = isect_s;
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].t = isect_t;
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].coords = compute_intersect_coords(
-            isect_s, isect_t,
-            org_up_s, org_up_t, ou_coords,
-            dst_up_s, dst_up_t, du_coords,
-            org_lo_s, org_lo_t, ol_coords,
-            dst_lo_s, dst_lo_t, dl_coords,
+            isect_s, isect_t, org_up_s, org_up_t, ou_coords, dst_up_s, dst_up_t, du_coords,
+            org_lo_s, org_lo_t, ol_coords, dst_lo_s, dst_lo_t, dl_coords,
         );
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].idx = TESS_UNDEF;
 
         // Insert new vertex into priority queue
         let handle = self.pq_insert(e_up2_org);
-        if handle == INVALID_HANDLE { return false; }
+        if handle == INVALID_HANDLE {
+            return false;
+        }
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].pq_handle = handle;
 
         let reg_above = self.region_above(reg_up);
-        if reg_above != INVALID { self.region_mut(reg_above).dirty = true; }
+        if reg_above != INVALID {
+            self.region_mut(reg_above).dirty = true;
+        }
         self.region_mut(reg_up).dirty = true;
         self.region_mut(reg_lo).dirty = true;
 
@@ -1301,21 +1601,29 @@ impl Tessellator {
             if !self.region(reg_up).dirty {
                 reg_lo = reg_up;
                 reg_up = self.region_above(reg_up);
-                if reg_up == INVALID || !self.region(reg_up).dirty { return; }
+                if reg_up == INVALID || !self.region(reg_up).dirty {
+                    return;
+                }
             }
 
             self.region_mut(reg_up).dirty = false;
-            if reg_lo == INVALID { return; }
+            if reg_lo == INVALID {
+                return;
+            }
             let e_up = self.region(reg_up).e_up;
             let e_lo = self.region(reg_lo).e_up;
 
             if e_up != INVALID && e_lo != INVALID {
                 let e_up_dst = self.mesh.as_ref().unwrap().dst(e_up);
                 let e_lo_dst = self.mesh.as_ref().unwrap().dst(e_lo);
-                let (eud_s, eud_t) = (self.mesh.as_ref().unwrap().verts[e_up_dst as usize].s,
-                                      self.mesh.as_ref().unwrap().verts[e_up_dst as usize].t);
-                let (eld_s, eld_t) = (self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].s,
-                                      self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].t);
+                let (eud_s, eud_t) = (
+                    self.mesh.as_ref().unwrap().verts[e_up_dst as usize].s,
+                    self.mesh.as_ref().unwrap().verts[e_up_dst as usize].t,
+                );
+                let (eld_s, eld_t) = (
+                    self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].s,
+                    self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].t,
+                );
 
                 if !vert_eq(eud_s, eud_t, eld_s, eld_t) {
                     if self.check_for_left_splice(reg_up) {
@@ -1324,12 +1632,16 @@ impl Tessellator {
                         if reg_lo_fix {
                             let e_lo2 = self.region(reg_lo).e_up;
                             self.delete_region(reg_lo);
-                            if e_lo2 != INVALID { self.mesh.as_mut().unwrap().delete_edge(e_lo2); }
+                            if e_lo2 != INVALID {
+                                self.mesh.as_mut().unwrap().delete_edge(e_lo2);
+                            }
                             reg_lo = self.region_below(reg_up);
                         } else if reg_up_fix {
                             let e_up2 = self.region(reg_up).e_up;
                             self.delete_region(reg_up);
-                            if e_up2 != INVALID { self.mesh.as_mut().unwrap().delete_edge(e_up2); }
+                            if e_up2 != INVALID {
+                                self.mesh.as_mut().unwrap().delete_edge(e_up2);
+                            }
                             reg_up = self.region_above(reg_lo);
                         }
                     }
@@ -1350,11 +1662,23 @@ impl Tessellator {
                             self.mesh.as_ref().unwrap().verts[e_up_dst2 as usize].t,
                             self.mesh.as_ref().unwrap().verts[e_lo_dst2 as usize].s,
                             self.mesh.as_ref().unwrap().verts[e_lo_dst2 as usize].t,
-                        ) && !fix_up && !fix_lo
-                            && (vert_eq(self.mesh.as_ref().unwrap().verts[e_up_dst2 as usize].s, self.mesh.as_ref().unwrap().verts[e_up_dst2 as usize].t, self.event_s, self.event_t)
-                                || vert_eq(self.mesh.as_ref().unwrap().verts[e_lo_dst2 as usize].s, self.mesh.as_ref().unwrap().verts[e_lo_dst2 as usize].t, self.event_s, self.event_t))
+                        ) && !fix_up
+                            && !fix_lo
+                            && (vert_eq(
+                                self.mesh.as_ref().unwrap().verts[e_up_dst2 as usize].s,
+                                self.mesh.as_ref().unwrap().verts[e_up_dst2 as usize].t,
+                                self.event_s,
+                                self.event_t,
+                            ) || vert_eq(
+                                self.mesh.as_ref().unwrap().verts[e_lo_dst2 as usize].s,
+                                self.mesh.as_ref().unwrap().verts[e_lo_dst2 as usize].t,
+                                self.event_s,
+                                self.event_t,
+                            ))
                         {
-                            if self.check_for_intersect(reg_up) { return; }
+                            if self.check_for_intersect(reg_up) {
+                                return;
+                            }
                         } else {
                             self.check_for_right_splice(reg_up);
                         }
@@ -1391,28 +1715,44 @@ impl Tessellator {
 
         // Step 1: if eUp->Dst != eLo->Dst, check for intersection
         let reg_lo = self.region_below(reg_up);
-        if reg_lo == INVALID { return; }
+        if reg_lo == INVALID {
+            return;
+        }
         let e_up = self.region(reg_up).e_up;
         let e_lo = self.region(reg_lo).e_up;
-        if e_up == INVALID || e_lo == INVALID { return; }
+        if e_up == INVALID || e_lo == INVALID {
+            return;
+        }
 
         let dst_differ = {
             let e_up_dst = self.mesh.as_ref().unwrap().dst(e_up);
             let e_lo_dst = self.mesh.as_ref().unwrap().dst(e_lo);
-            let (s1, t1) = (self.mesh.as_ref().unwrap().verts[e_up_dst as usize].s, self.mesh.as_ref().unwrap().verts[e_up_dst as usize].t);
-            let (s2, t2) = (self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].s, self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].t);
+            let (s1, t1) = (
+                self.mesh.as_ref().unwrap().verts[e_up_dst as usize].s,
+                self.mesh.as_ref().unwrap().verts[e_up_dst as usize].t,
+            );
+            let (s2, t2) = (
+                self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].s,
+                self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].t,
+            );
             !vert_eq(s1, t1, s2, t2)
         };
         if dst_differ {
-            if self.check_for_intersect(reg_up) { return; }
+            if self.check_for_intersect(reg_up) {
+                return;
+            }
         }
 
         // Step 2: re-read after possible changes from CheckForIntersect
         let reg_lo = self.region_below(reg_up);
-        if reg_lo == INVALID { return; }
+        if reg_lo == INVALID {
+            return;
+        }
         let e_up = self.region(reg_up).e_up;
         let e_lo = self.region(reg_lo).e_up;
-        if e_up == INVALID || e_lo == INVALID { return; }
+        if e_up == INVALID || e_lo == INVALID {
+            return;
+        }
 
         // Step 3: degenerate cases
         let mut degenerate = false;
@@ -1423,17 +1763,26 @@ impl Tessellator {
         // if(VertEq(eUp->Org, event))
         let e_up_org = self.mesh.as_ref().unwrap().edges[e_up as usize].org;
         if e_up_org != INVALID {
-            let (s, t) = (self.mesh.as_ref().unwrap().verts[e_up_org as usize].s, self.mesh.as_ref().unwrap().verts[e_up_org as usize].t);
+            let (s, t) = (
+                self.mesh.as_ref().unwrap().verts[e_up_org as usize].s,
+                self.mesh.as_ref().unwrap().verts[e_up_org as usize].t,
+            );
             if vert_eq(s, t, self.event_s, self.event_t) {
                 // splice(eTopLeft->Oprev, eUp)
                 let e_tl_oprev = self.mesh.as_ref().unwrap().oprev(e_top_left);
                 self.mesh.as_mut().unwrap().splice(e_tl_oprev, e_up);
                 // regUp = TopLeftRegion(regUp)
                 let reg_up2 = self.top_left_region(reg_up);
-                if reg_up2 == INVALID { return; }
+                if reg_up2 == INVALID {
+                    return;
+                }
                 // eTopLeft = RegionBelow(regUp)->eUp
                 let rb = self.region_below(reg_up2);
-                e_top_left = if rb != INVALID { self.region(rb).e_up } else { INVALID };
+                e_top_left = if rb != INVALID {
+                    self.region(rb).e_up
+                } else {
+                    INVALID
+                };
                 // FinishLeftRegions(RegionBelow(regUp), regLo)
                 self.finish_left_regions(rb, reg_lo);
                 reg_up = reg_up2;
@@ -1444,17 +1793,33 @@ impl Tessellator {
         // if(VertEq(eLo->Org, event))
         let e_lo2 = if degenerate {
             let rl = self.region_below(reg_up);
-            if rl != INVALID { self.region(rl).e_up } else { INVALID }
-        } else { e_lo };
+            if rl != INVALID {
+                self.region(rl).e_up
+            } else {
+                INVALID
+            }
+        } else {
+            e_lo
+        };
         let reg_lo2 = self.region_below(reg_up);
 
-        let e_lo_org = if e_lo2 != INVALID { self.mesh.as_ref().unwrap().edges[e_lo2 as usize].org } else { INVALID };
+        let e_lo_org = if e_lo2 != INVALID {
+            self.mesh.as_ref().unwrap().edges[e_lo2 as usize].org
+        } else {
+            INVALID
+        };
         if e_lo_org != INVALID {
-            let (s, t) = (self.mesh.as_ref().unwrap().verts[e_lo_org as usize].s, self.mesh.as_ref().unwrap().verts[e_lo_org as usize].t);
+            let (s, t) = (
+                self.mesh.as_ref().unwrap().verts[e_lo_org as usize].s,
+                self.mesh.as_ref().unwrap().verts[e_lo_org as usize].t,
+            );
             if vert_eq(s, t, self.event_s, self.event_t) {
                 // splice(eBottomLeft, eLo->Oprev)
                 let e_lo_oprev = self.mesh.as_ref().unwrap().oprev(e_lo2);
-                self.mesh.as_mut().unwrap().splice(e_bottom_left, e_lo_oprev);
+                self.mesh
+                    .as_mut()
+                    .unwrap()
+                    .splice(e_bottom_left, e_lo_oprev);
                 // eBottomLeft = FinishLeftRegions(regLo, NULL)
                 e_bottom_left = self.finish_left_regions(reg_lo2, INVALID);
                 degenerate = true;
@@ -1472,15 +1837,25 @@ impl Tessellator {
         // Step 4: non-degenerate — add temporary fixable edge
         let e_up2 = self.region(reg_up).e_up;
         let rl = self.region_below(reg_up);
-        if rl == INVALID { return; }
+        if rl == INVALID {
+            return;
+        }
         let e_lo3 = self.region(rl).e_up;
-        if e_up2 == INVALID || e_lo3 == INVALID { return; }
+        if e_up2 == INVALID || e_lo3 == INVALID {
+            return;
+        }
 
         let e_up2_org = self.mesh.as_ref().unwrap().edges[e_up2 as usize].org;
         let e_lo3_org = self.mesh.as_ref().unwrap().edges[e_lo3 as usize].org;
         let e_new_target = if e_up2_org != INVALID && e_lo3_org != INVALID {
-            let (euo_s, euo_t) = (self.mesh.as_ref().unwrap().verts[e_up2_org as usize].s, self.mesh.as_ref().unwrap().verts[e_up2_org as usize].t);
-            let (elo_s, elot) = (self.mesh.as_ref().unwrap().verts[e_lo3_org as usize].s, self.mesh.as_ref().unwrap().verts[e_lo3_org as usize].t);
+            let (euo_s, euo_t) = (
+                self.mesh.as_ref().unwrap().verts[e_up2_org as usize].s,
+                self.mesh.as_ref().unwrap().verts[e_up2_org as usize].t,
+            );
+            let (elo_s, elot) = (
+                self.mesh.as_ref().unwrap().verts[e_lo3_org as usize].s,
+                self.mesh.as_ref().unwrap().verts[e_lo3_org as usize].t,
+            );
             // eNew = VertLeq(eLo->Org, eUp->Org) ? eLo->Oprev : eUp
             if vert_leq(elo_s, elot, euo_s, euo_t) {
                 self.mesh.as_ref().unwrap().oprev(e_lo3)
@@ -1493,7 +1868,12 @@ impl Tessellator {
 
         // eNew = connect(eBottomLeft->Lprev, eNewTarget)
         let e_bl_lprev = self.mesh.as_ref().unwrap().lprev(e_bottom_left);
-        let e_new = match self.mesh.as_mut().unwrap().connect(e_bl_lprev, e_new_target) {
+        let e_new = match self
+            .mesh
+            .as_mut()
+            .unwrap()
+            .connect(e_bl_lprev, e_new_target)
+        {
             Some(e) => e,
             None => return,
         };
@@ -1512,10 +1892,14 @@ impl Tessellator {
 
     fn connect_left_degenerate(&mut self, reg_up: RegionIdx, v_event: VertIdx) {
         let e_up = self.region(reg_up).e_up;
-        if e_up == INVALID { return; }
+        if e_up == INVALID {
+            return;
+        }
         let e_up_org = self.mesh.as_ref().unwrap().edges[e_up as usize].org;
-        let (euo_s, euo_t) = (self.mesh.as_ref().unwrap().verts[e_up_org as usize].s,
-                              self.mesh.as_ref().unwrap().verts[e_up_org as usize].t);
+        let (euo_s, euo_t) = (
+            self.mesh.as_ref().unwrap().verts[e_up_org as usize].s,
+            self.mesh.as_ref().unwrap().verts[e_up_org as usize].t,
+        );
         let (ev_s, ev_t) = (self.event_s, self.event_t);
 
         if vert_eq(euo_s, euo_t, ev_s, ev_t) {
@@ -1525,7 +1909,9 @@ impl Tessellator {
                 self.mesh.as_mut().unwrap().splice(v_an, e_up);
             }
             let reg_up2 = self.top_left_region(reg_up);
-            if reg_up2 == INVALID { return; }
+            if reg_up2 == INVALID {
+                return;
+            }
             let rb = self.region_below(reg_up2);
             let rb_e = self.region(rb).e_up;
             let rl = self.region_below(rb);
@@ -1566,42 +1952,32 @@ impl Tessellator {
 
     fn connect_left_vertex(&mut self, v_event: VertIdx) {
         let an_edge = self.mesh.as_ref().unwrap().verts[v_event as usize].an_edge;
-        if an_edge == INVALID { return; }
-
-        #[cfg(test)]
-        let dbg = std::env::var("TESS_DEBUG").is_ok();
-
-        // tmp.eUp = vEvent->anEdge->Sym
-        let tmp_e_up = an_edge ^ 1;
-
-        // regUp = dictKey(dictSearch(dict, &tmp))
-        // C dictSearch walks FORWARD and returns the FIRST region R where edge_leq(tmp, R).
-        // This is the first (lowest) region whose upper edge is at or above v_event.
-        let reg_up = self.dict_search_forward(tmp_e_up);
-        #[cfg(test)]
-        if dbg {
-            let is_sentinel = if reg_up != INVALID { self.region(reg_up).sentinel } else { false };
-            eprintln!("  connect_left_vertex: an_edge={} tmp_e_up={} → reg_up={} (sentinel={})",
-                an_edge, tmp_e_up, reg_up, is_sentinel);
+        if an_edge == INVALID {
+            return;
         }
-        if reg_up == INVALID { return; }
+
+        let tmp_e_up = an_edge ^ 1;
+        let reg_up = self.dict_search_forward(tmp_e_up);
+        if reg_up == INVALID {
+            return;
+        }
 
         let reg_lo = self.region_below(reg_up);
-        #[cfg(test)]
-        if dbg {
-            let is_sentinel = if reg_lo != INVALID { self.region(reg_lo).sentinel } else { false };
-            eprintln!("  connect_left_vertex: reg_lo={} (sentinel={})", reg_lo, is_sentinel);
+        if reg_lo == INVALID {
+            return;
         }
-        if reg_lo == INVALID { return; }
 
         let e_up = self.region(reg_up).e_up;
         let e_lo = self.region(reg_lo).e_up;
-        if e_up == INVALID || e_lo == INVALID { return; }
+        if e_up == INVALID || e_lo == INVALID {
+            return;
+        }
 
-        // Try merging with U or L first: EdgeSign(eUp->Dst, vEvent, eUp->Org) == 0
         let e_up_dst = self.mesh.as_ref().unwrap().dst(e_up);
         let e_up_org = self.mesh.as_ref().unwrap().edges[e_up as usize].org;
-        if e_up_dst == INVALID || e_up_org == INVALID { return; }
+        if e_up_dst == INVALID || e_up_org == INVALID {
+            return;
+        }
         let eud_s = self.mesh.as_ref().unwrap().verts[e_up_dst as usize].s;
         let eud_t = self.mesh.as_ref().unwrap().verts[e_up_dst as usize].t;
         let euo_s = self.mesh.as_ref().unwrap().verts[e_up_org as usize].s;
@@ -1612,56 +1988,56 @@ impl Tessellator {
             return;
         }
 
-        // reg = VertLeq(eLo->Dst, eUp->Dst) ? regUp : regLo
         let e_lo_dst = self.mesh.as_ref().unwrap().dst(e_lo);
         let eld_s = self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].s;
         let eld_t = self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].t;
-        let reg = if vert_leq(eld_s, eld_t, eud_s, eud_t) { reg_up } else { reg_lo };
+        let reg = if vert_leq(eld_s, eld_t, eud_s, eud_t) {
+            reg_up
+        } else {
+            reg_lo
+        };
 
         let reg_up_inside = self.region(reg_up).inside;
         let reg_fix = self.region(reg).fix_upper_edge;
 
-        #[cfg(test)]
-        if dbg {
-            eprintln!("  connect_left_vertex: reg_up_inside={} reg_fix={} reg=={} reg_up=={} reg_lo=={}",
-                reg_up_inside, reg_fix, reg, reg_up, reg_lo);
-        }
-
         if reg_up_inside || reg_fix {
+            if self.trace_enabled {
+                eprintln!(
+                    "R   LEFT_CONNECT inside={} fixUpper={} reg={}",
+                    reg_up_inside as i32,
+                    reg_fix as i32,
+                    if reg == reg_up { "up" } else { "lo" }
+                );
+            }
             let e_new = if reg == reg_up {
-                // C: eNew = Connect(eUp->Lnext, vEvent->anEdge->Sym)
-                // connect(eOrg, eDst) creates edge from eOrg->Dst to eDst->Org.
-                // So eNew.Org = (eUp->Lnext)->Dst, going to (anEdge->Sym)->Org.
+                // C: eNew = tessMeshConnect(mesh, vEvent->anEdge->Sym, eUp->Lnext)
                 let e_up_lnext = self.mesh.as_ref().unwrap().edges[e_up as usize].lnext;
-                #[cfg(test)]
-                if dbg { eprintln!("  → connect(e_up_lnext={}, an_edge^1={})", e_up_lnext, an_edge^1); }
-                self.mesh.as_mut().unwrap().connect(e_up_lnext, an_edge ^ 1)
+                self.mesh.as_mut().unwrap().connect(an_edge ^ 1, e_up_lnext)
             } else {
-                // tempHalfEdge = connect(eLo->Dnext, vEvent->anEdge); eNew = tempHalfEdge->Sym
                 let e_lo_dnext = self.mesh.as_ref().unwrap().dnext(e_lo);
-                #[cfg(test)]
-                if dbg { eprintln!("  → connect(e_lo_dnext={}, an_edge={})^1", e_lo_dnext, an_edge); }
-                self.mesh.as_mut().unwrap().connect(e_lo_dnext, an_edge).map(|e| e ^ 1)
+                self.mesh
+                    .as_mut()
+                    .unwrap()
+                    .connect(e_lo_dnext, an_edge)
+                    .map(|e| e ^ 1)
             };
             let e_new = match e_new {
                 Some(e) => e,
                 None => return,
             };
-            #[cfg(test)]
-            if dbg { eprintln!("  connect_left_vertex: e_new={}", e_new); }
 
             if reg_fix {
-                if !self.fix_upper_edge(reg, e_new) { return; }
+                if !self.fix_upper_edge(reg, e_new) {
+                    return;
+                }
             } else {
-                // add_region_below calls compute_winding internally
                 self.add_region_below(reg_up, e_new);
             }
-            // Recursively process this vertex now that new edges are connected
             self.sweep_event(v_event);
         } else {
-            // Vertex is in a region outside the polygon — just add right-going edges
-            #[cfg(test)]
-            if dbg { eprintln!("  → add_right_edges (outside region): an_edge={}", an_edge); }
+            if self.trace_enabled {
+                eprintln!("R   LEFT_OUTSIDE");
+            }
             self.add_right_edges(reg_up, an_edge, an_edge, INVALID, true);
         }
     }
@@ -1694,395 +2070,85 @@ impl Tessellator {
 
     fn sweep_event(&mut self, v_event: VertIdx) -> bool {
         let an_edge = self.mesh.as_ref().unwrap().verts[v_event as usize].an_edge;
-        if an_edge == INVALID { return true; }
+        if an_edge == INVALID {
+            return true;
+        }
 
-        #[cfg(test)]
-        let dbg = std::env::var("TESS_DEBUG").is_ok();
-        #[cfg(test)]
-        if dbg {
-            let (vs, vt) = (self.mesh.as_ref().unwrap().verts[v_event as usize].s,
-                            self.mesh.as_ref().unwrap().verts[v_event as usize].t);
-            eprintln!("sweep_event: v={} ({:.3},{:.3}) an_edge={}", v_event, vs, vt, an_edge);
+        if self.trace_enabled {
+            let (vs, vt) = (
+                self.mesh.as_ref().unwrap().verts[v_event as usize].s,
+                self.mesh.as_ref().unwrap().verts[v_event as usize].t,
+            );
+            eprintln!(
+                "R SWEEP #{} s={:.6} t={:.6}",
+                self.sweep_event_num, vs, vt
+            );
+            self.sweep_event_num += 1;
         }
 
         // Walk through all edges at v_event (the onext ring).
-        // If ANY has active_region != INVALID, it's already in the dict → "right vertex" case.
-        // If NONE has active_region set → call connect_left_vertex (C: ConnectLeftVertex).
+        // If ANY has active_region != INVALID, it's already in the dict -> "right vertex" case.
+        // If NONE has active_region set -> call connect_left_vertex (C: ConnectLeftVertex).
         let e_start = an_edge;
         let mut e = e_start;
         let found_e = loop {
             let ar = self.mesh.as_ref().unwrap().edges[e as usize].active_region;
             if ar != INVALID {
-                break Some(e); // e is in the dict
+                break Some(e);
             }
             let next = self.mesh.as_ref().unwrap().edges[e as usize].onext;
             e = next;
             if e == e_start {
-                break None; // all edges have no active region
+                break None;
             }
         };
 
         if found_e.is_none() {
-            // All edges are new (none in dict) → "left vertex" (C: ConnectLeftVertex)
-            #[cfg(test)]
-            if dbg { eprintln!("  → connect_left_vertex (no active regions)"); }
+            if self.trace_enabled {
+                eprintln!("R   PATH left");
+            }
             self.connect_left_vertex(v_event);
             return true;
         }
 
         // At least one edge is already in the dict.
-        // e = that edge with active_region != INVALID.
         let e = found_e.unwrap();
+        if self.trace_enabled {
+            eprintln!("R   PATH right");
+        }
         let reg_up = {
             let ar = self.mesh.as_ref().unwrap().edges[e as usize].active_region;
-            #[cfg(test)]
-            if dbg { eprintln!("  → right-vertex path: found_e={} active_region={}", e, ar); }
             self.top_left_region(ar)
         };
-        if reg_up == INVALID { return false; }
+        if reg_up == INVALID {
+            return false;
+        }
 
         let reg_lo = self.region_below(reg_up);
-        if reg_lo == INVALID { return true; }
-        let e_top_left = self.region(reg_lo).e_up;
-        #[cfg(test)]
-        if dbg {
-            eprintln!("  reg_up={} reg_lo={} e_top_left={}", reg_up, reg_lo, e_top_left);
+        if reg_lo == INVALID {
+            return true;
         }
+        let e_top_left = self.region(reg_lo).e_up;
         let e_bottom_left = self.finish_left_regions(reg_lo, INVALID);
 
-        if e_bottom_left == INVALID { return true; }
-        let e_bottom_left_onext = self.mesh.as_ref().unwrap().edges[e_bottom_left as usize].onext;
-        #[cfg(test)]
-        if dbg {
-            eprintln!("  e_bottom_left={} e_bottom_left_onext={} e_top_left={}",
-                e_bottom_left, e_bottom_left_onext, e_top_left);
+        if e_bottom_left == INVALID {
+            return true;
         }
+        let e_bottom_left_onext = self.mesh.as_ref().unwrap().edges[e_bottom_left as usize].onext;
         if e_bottom_left_onext == e_top_left {
-            // No right-going edges → temporary fixable edge
-            #[cfg(test)]
-            if dbg { eprintln!("  → connect_right_vertex"); }
+            if self.trace_enabled {
+                eprintln!("R   CONNECT_RIGHT");
+            }
             self.connect_right_vertex(reg_up, e_bottom_left);
         } else {
-            #[cfg(test)]
-            if dbg { eprintln!("  → add_right_edges"); }
+            if self.trace_enabled {
+                eprintln!("R   ADD_RIGHT_EDGES");
+            }
             self.add_right_edges(reg_up, e_bottom_left_onext, e_top_left, e_top_left, true);
         }
         true
     }
 
-    // ─────── Output ───────────────────────────────────────────────────────────
-
-    fn output_polymesh(&mut self, element_type: ElementType, poly_size: usize, vertex_size: usize) {
-        if poly_size > 3 {
-            if let Some(ref mut mesh) = self.mesh {
-                if !mesh.merge_convex_faces(poly_size) {
-                    self.status = TessStatus::OutOfMemory;
-                    return;
-                }
-            }
-        }
-
-        let mesh = match self.mesh.as_mut() { Some(m) => m, None => return };
-
-        // Mark all vertices unused
-        let mut v = mesh.verts[V_HEAD as usize].next;
-        while v != V_HEAD {
-            mesh.verts[v as usize].n = TESS_UNDEF;
-            v = mesh.verts[v as usize].next;
-        }
-
-        let mut max_vert = 0u32;
-        let mut max_face = 0u32;
-
-        let mut f = mesh.faces[F_HEAD as usize].next;
-        while f != F_HEAD {
-            mesh.faces[f as usize].n = TESS_UNDEF;
-            if !mesh.faces[f as usize].inside { f = mesh.faces[f as usize].next; continue; }
-
-            let e_start = mesh.faces[f as usize].an_edge;
-            let mut e = e_start;
-            loop {
-                let org = mesh.edges[e as usize].org;
-                if mesh.verts[org as usize].n == TESS_UNDEF {
-                    mesh.verts[org as usize].n = max_vert;
-                    max_vert += 1;
-                }
-                e = mesh.edges[e as usize].lnext;
-                if e == e_start { break; }
-            }
-            mesh.faces[f as usize].n = max_face;
-            max_face += 1;
-            f = mesh.faces[f as usize].next;
-        }
-
-        self.out_element_count = max_face as usize;
-        self.out_vertex_count = max_vert as usize;
-
-        let stride = if element_type == ElementType::ConnectedPolygons { poly_size * 2 } else { poly_size };
-        self.out_elements = vec![TESS_UNDEF; max_face as usize * stride];
-        self.out_vertices = vec![0.0; max_vert as usize * vertex_size];
-        self.out_vertex_indices = vec![TESS_UNDEF; max_vert as usize];
-
-        // Output vertex data
-        let mesh = self.mesh.as_ref().unwrap();
-        let mut v = mesh.verts[V_HEAD as usize].next;
-        while v != V_HEAD {
-            let n = mesh.verts[v as usize].n;
-            if n != TESS_UNDEF {
-                let base = n as usize * vertex_size;
-                self.out_vertices[base] = mesh.verts[v as usize].coords[0];
-                self.out_vertices[base + 1] = mesh.verts[v as usize].coords[1];
-                if vertex_size > 2 { self.out_vertices[base + 2] = mesh.verts[v as usize].coords[2]; }
-                self.out_vertex_indices[n as usize] = mesh.verts[v as usize].idx;
-            }
-            v = mesh.verts[v as usize].next;
-        }
-
-        // Output element indices
-        let mut ep = 0;
-        let mut f = mesh.faces[F_HEAD as usize].next;
-        while f != F_HEAD {
-            if !mesh.faces[f as usize].inside { f = mesh.faces[f as usize].next; continue; }
-            let e_start = mesh.faces[f as usize].an_edge;
-            let mut e = e_start;
-            let mut fv = 0;
-            loop {
-                let org = mesh.edges[e as usize].org;
-                self.out_elements[ep] = mesh.verts[org as usize].n;
-                ep += 1; fv += 1;
-                e = mesh.edges[e as usize].lnext;
-                if e == e_start { break; }
-            }
-            for _ in fv..poly_size { self.out_elements[ep] = TESS_UNDEF; ep += 1; }
-
-            if element_type == ElementType::ConnectedPolygons {
-                let e_start = mesh.faces[f as usize].an_edge;
-                let mut e = e_start;
-                let mut fv2 = 0;
-                loop {
-                    let rf = mesh.rface(e);
-                    let nf = if rf != INVALID && mesh.faces[rf as usize].inside {
-                        mesh.faces[rf as usize].n
-                    } else { TESS_UNDEF };
-                    self.out_elements[ep] = nf;
-                    ep += 1; fv2 += 1;
-                    e = mesh.edges[e as usize].lnext;
-                    if e == e_start { break; }
-                }
-                for _ in fv2..poly_size { self.out_elements[ep] = TESS_UNDEF; ep += 1; }
-            }
-
-            f = mesh.faces[f as usize].next;
-        }
-    }
-
-    fn output_contours(&mut self, vertex_size: usize) {
-        let mesh = match self.mesh.as_ref() { Some(m) => m, None => return };
-        let mut total_verts = 0usize;
-        let mut total_elems = 0usize;
-        let mut f = mesh.faces[F_HEAD as usize].next;
-        while f != F_HEAD {
-            if mesh.faces[f as usize].inside {
-                let e_start = mesh.faces[f as usize].an_edge;
-                let mut e = e_start;
-                loop { total_verts += 1; e = mesh.edges[e as usize].lnext; if e == e_start { break; } }
-                total_elems += 1;
-            }
-            f = mesh.faces[f as usize].next;
-        }
-        self.out_element_count = total_elems;
-        self.out_vertex_count = total_verts;
-        self.out_elements = vec![TESS_UNDEF; total_elems * 2];
-        self.out_vertices = vec![0.0; total_verts * vertex_size];
-        self.out_vertex_indices = vec![TESS_UNDEF; total_verts];
-
-        let mesh = self.mesh.as_ref().unwrap();
-        let mut vp = 0usize;
-        let mut ep = 0usize;
-        let mut sv = 0usize;
-        let mut f = mesh.faces[F_HEAD as usize].next;
-        while f != F_HEAD {
-            if !mesh.faces[f as usize].inside { f = mesh.faces[f as usize].next; continue; }
-            let e_start = mesh.faces[f as usize].an_edge;
-            let mut e = e_start;
-            let mut vc = 0usize;
-            loop {
-                let org = mesh.edges[e as usize].org;
-                let base = vp * vertex_size;
-                self.out_vertices[base] = mesh.verts[org as usize].coords[0];
-                self.out_vertices[base + 1] = mesh.verts[org as usize].coords[1];
-                if vertex_size > 2 { self.out_vertices[base + 2] = mesh.verts[org as usize].coords[2]; }
-                self.out_vertex_indices[vp] = mesh.verts[org as usize].idx;
-                vp += 1; vc += 1;
-                e = mesh.edges[e as usize].lnext;
-                if e == e_start { break; }
-            }
-            self.out_elements[ep] = sv as u32;
-            self.out_elements[ep + 1] = vc as u32;
-            ep += 2; sv += vc;
-            f = mesh.faces[f as usize].next;
-        }
-    }
-}
-
-// These fields need to be added to the Tessellator struct above.
-// Rust doesn't allow extending structs, so we handle the sorted event queue
-// by adding fields via a separate tracking mechanism.
-// We'll use a Vec<VertIdx> stored directly in the tessellator.
-// (Fields added as sorted_events and sorted_event_pos in struct definition)
-
-// ─────────────────────────── Helper functions ─────────────────────────────────
-
-fn is_valid_coord(c: f32) -> bool {
-    c <= MAX_VALID_COORD && c >= MIN_VALID_COORD && !c.is_nan()
-}
-
-fn dot(u: &[f32; 3], v: &[f32; 3]) -> f32 {
-    u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
-}
-
-fn long_axis(v: &[f32; 3]) -> usize {
-    let mut i = 0;
-    if v[1].abs() > v[0].abs() { i = 1; }
-    if v[2].abs() > v[i].abs() { i = 2; }
-    i
-}
-
-fn short_axis(v: &[f32; 3]) -> usize {
-    let mut i = 0;
-    if v[1].abs() < v[0].abs() { i = 1; }
-    if v[2].abs() < v[i].abs() { i = 2; }
-    i
-}
-
-fn compute_normal(mesh: &Mesh, norm: &mut [f32; 3]) {
-    let first_v = mesh.verts[V_HEAD as usize].next;
-    if first_v == V_HEAD { norm[0] = 0.0; norm[1] = 0.0; norm[2] = 1.0; return; }
-
-    let mut max_val = [0f32; 3];
-    let mut min_val = [0f32; 3];
-    let mut max_vert = [V_HEAD; 3];
-    let mut min_vert = [V_HEAD; 3];
-
-    for i in 0..3 {
-        let c = mesh.verts[first_v as usize].coords[i];
-        min_val[i] = c; min_vert[i] = first_v;
-        max_val[i] = c; max_vert[i] = first_v;
-    }
-
-    let mut v = mesh.verts[V_HEAD as usize].next;
-    while v != V_HEAD {
-        for i in 0..3 {
-            let c = mesh.verts[v as usize].coords[i];
-            if c < min_val[i] { min_val[i] = c; min_vert[i] = v; }
-            if c > max_val[i] { max_val[i] = c; max_vert[i] = v; }
-        }
-        v = mesh.verts[v as usize].next;
-    }
-
-    let mut i = 0;
-    if max_val[1] - min_val[1] > max_val[0] - min_val[0] { i = 1; }
-    if max_val[2] - min_val[2] > max_val[i] - min_val[i] { i = 2; }
-    if min_val[i] >= max_val[i] { norm[0] = 0.0; norm[1] = 0.0; norm[2] = 1.0; return; }
-
-    let v1 = min_vert[i];
-    let v2 = max_vert[i];
-    let d1 = [
-        mesh.verts[v1 as usize].coords[0] - mesh.verts[v2 as usize].coords[0],
-        mesh.verts[v1 as usize].coords[1] - mesh.verts[v2 as usize].coords[1],
-        mesh.verts[v1 as usize].coords[2] - mesh.verts[v2 as usize].coords[2],
-    ];
-
-    let mut max_len2 = 0.0f32;
-    let mut v = mesh.verts[V_HEAD as usize].next;
-    while v != V_HEAD {
-        let d2 = [
-            mesh.verts[v as usize].coords[0] - mesh.verts[v2 as usize].coords[0],
-            mesh.verts[v as usize].coords[1] - mesh.verts[v2 as usize].coords[1],
-            mesh.verts[v as usize].coords[2] - mesh.verts[v2 as usize].coords[2],
-        ];
-        let tn = [d1[1]*d2[2]-d1[2]*d2[1], d1[2]*d2[0]-d1[0]*d2[2], d1[0]*d2[1]-d1[1]*d2[0]];
-        let tl2 = tn[0]*tn[0] + tn[1]*tn[1] + tn[2]*tn[2];
-        if tl2 > max_len2 { max_len2 = tl2; *norm = tn; }
-        v = mesh.verts[v as usize].next;
-    }
-
-    if max_len2 <= 0.0 {
-        norm[0] = 0.0; norm[1] = 0.0; norm[2] = 0.0;
-        norm[short_axis(&d1)] = 1.0;
-    }
-}
-
-fn check_orientation(mesh: &mut Mesh) {
-    let mut area = 0.0f32;
-    let mut f = mesh.faces[F_HEAD as usize].next;
-    while f != F_HEAD {
-        let an = mesh.faces[f as usize].an_edge;
-        if an != INVALID && mesh.edges[an as usize].winding > 0 {
-            let mut e = an;
-            loop {
-                let org = mesh.edges[e as usize].org;
-                let dst = mesh.dst(e);
-                area += (mesh.verts[org as usize].s - mesh.verts[dst as usize].s)
-                    * (mesh.verts[org as usize].t + mesh.verts[dst as usize].t);
-                e = mesh.edges[e as usize].lnext;
-                if e == an { break; }
-            }
-        }
-        f = mesh.faces[f as usize].next;
-    }
-    if area < 0.0 {
-        let mut v = mesh.verts[V_HEAD as usize].next;
-        while v != V_HEAD {
-            mesh.verts[v as usize].t = -mesh.verts[v as usize].t;
-            v = mesh.verts[v as usize].next;
-        }
-    }
-}
-
-/// Mirrors C `GetIntersectData` / `VertexWeights`.
-/// Computes the intersection vertex's 3D coords as a weighted combination
-/// of the four edge endpoints, where each edge contributes 50% of the weight
-/// split between its org/dst proportional to their L1 distance to the intersection.
-fn compute_intersect_coords(
-    isect_s: Real, isect_t: Real,
-    org_up_s: Real, org_up_t: Real, org_up_coords: [Real; 3],
-    dst_up_s: Real, dst_up_t: Real, dst_up_coords: [Real; 3],
-    org_lo_s: Real, org_lo_t: Real, org_lo_coords: [Real; 3],
-    dst_lo_s: Real, dst_lo_t: Real, dst_lo_coords: [Real; 3],
-) -> [Real; 3] {
-    // VertL1dist(u, v) = |u.s - v.s| + |u.t - v.t|
-    let l1 = |as_: Real, at: Real, bs: Real, bt: Real| -> Real {
-        (as_ - bs).abs() + (at - bt).abs()
-    };
-
-    let mut coords = [0.0f32; 3];
-
-    // VertexWeights for eUp edge (orgUp → dstUp)
-    let t1 = l1(org_up_s, org_up_t, isect_s, isect_t);
-    let t2 = l1(dst_up_s, dst_up_t, isect_s, isect_t);
-    let (w0, w1) = if t1 + t2 > 0.0 {
-        (0.5 * t2 / (t1 + t2), 0.5 * t1 / (t1 + t2))
-    } else {
-        (0.25, 0.25)
-    };
-    for i in 0..3 {
-        coords[i] += w0 * org_up_coords[i] + w1 * dst_up_coords[i];
-    }
-
-    // VertexWeights for eLo edge (orgLo → dstLo)
-    let t3 = l1(org_lo_s, org_lo_t, isect_s, isect_t);
-    let t4 = l1(dst_lo_s, dst_lo_t, isect_s, isect_t);
-    let (w2, w3) = if t3 + t4 > 0.0 {
-        (0.5 * t4 / (t3 + t4), 0.5 * t3 / (t3 + t4))
-    } else {
-        (0.25, 0.25)
-    };
-    for i in 0..3 {
-        coords[i] += w2 * org_lo_coords[i] + w3 * dst_lo_coords[i];
-    }
-
-    coords
 }
 
 // ────────────────────────── Public wrapper ────────────────────────────────────
@@ -2094,220 +2160,49 @@ pub struct TessellatorApi {
 
 impl TessellatorApi {
     pub fn new() -> Self {
-        TessellatorApi { inner: Tessellator::new() }
+        TessellatorApi {
+            inner: Tessellator::new(),
+        }
     }
-    pub fn set_option(&mut self, option: TessOption, value: bool) { self.inner.set_option(option, value); }
-    pub fn add_contour(&mut self, size: usize, vertices: &[f32]) { self.inner.add_contour(size, vertices); }
-    pub fn tessellate(&mut self, winding_rule: WindingRule, element_type: ElementType, poly_size: usize, vertex_size: usize, normal: Option<[f32; 3]>) -> bool {
-        self.inner.tessellate(winding_rule, element_type, poly_size, vertex_size, normal)
+    pub fn set_option(&mut self, option: TessOption, value: bool) {
+        self.inner.set_option(option, value);
     }
-    pub fn vertex_count(&self) -> usize { self.inner.vertex_count() }
-    pub fn element_count(&self) -> usize { self.inner.element_count() }
-    pub fn vertices(&self) -> &[f32] { self.inner.vertices() }
-    pub fn vertex_indices(&self) -> &[u32] { self.inner.vertex_indices() }
-    pub fn elements(&self) -> &[u32] { self.inner.elements() }
-    pub fn status(&self) -> TessStatus { self.inner.get_status() }
+    pub fn add_contour(&mut self, size: usize, vertices: &[f32]) {
+        self.inner.add_contour(size, vertices);
+    }
+    pub fn tessellate(
+        &mut self,
+        winding_rule: WindingRule,
+        element_type: ElementType,
+        poly_size: usize,
+        vertex_size: usize,
+        normal: Option<[f32; 3]>,
+    ) -> bool {
+        self.inner
+            .tessellate(winding_rule, element_type, poly_size, vertex_size, normal)
+    }
+    pub fn vertex_count(&self) -> usize {
+        self.inner.vertex_count()
+    }
+    pub fn element_count(&self) -> usize {
+        self.inner.element_count()
+    }
+    pub fn vertices(&self) -> &[f32] {
+        self.inner.vertices()
+    }
+    pub fn vertex_indices(&self) -> &[u32] {
+        self.inner.vertex_indices()
+    }
+    pub fn elements(&self) -> &[u32] {
+        self.inner.elements()
+    }
+    pub fn status(&self) -> TessStatus {
+        self.inner.get_status()
+    }
 }
 
 impl Default for TessellatorApi {
-    fn default() -> Self { Self::new() }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn debug_polygon_with_hole() {
-        use crate::mesh::{F_HEAD, INVALID as MESH_INVALID};
-        let mut tess = Tessellator::new();
-        // outer CCW square
-        tess.set_option(TessOption::ReverseContours, false);
-        tess.add_contour(2, &[0.0f32, 0.0, 3.0, 0.0, 3.0, 3.0, 0.0, 3.0]);
-        // inner CW hole
-        tess.set_option(TessOption::ReverseContours, true);
-        tess.add_contour(2, &[1.0f32, 1.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0]);
-        
-        // Run interior manually but stop before tessellate_interior
-        tess.winding_rule = WindingRule::Positive;
-        tess.project_polygon();
-        
-        // Run just the sweep (not tessellate_interior)
-        tess.remove_degenerate_edges();
-        tess.init_priority_queue();
-        tess.init_edge_dict();
-        loop {
-            if tess.pq_is_empty() { break; }
-            let v = tess.pq_extract_min();
-            if v == INVALID { break; }
-            loop {
-                if tess.pq_is_empty() { break; }
-                let next_v = tess.pq_minimum();
-                if next_v == INVALID { break; }
-                let (v_s, v_t) = { let m = tess.mesh.as_ref().unwrap(); (m.verts[v as usize].s, m.verts[v as usize].t) };
-                let (nv_s, nv_t) = { let m = tess.mesh.as_ref().unwrap(); (m.verts[next_v as usize].s, m.verts[next_v as usize].t) };
-                if !crate::geom::vert_eq(v_s, v_t, nv_s, nv_t) { break; }
-                let next_v = tess.pq_extract_min();
-                let an1 = tess.mesh.as_ref().unwrap().verts[v as usize].an_edge;
-                let an2 = tess.mesh.as_ref().unwrap().verts[next_v as usize].an_edge;
-                if an1 != INVALID && an2 != INVALID {
-                    tess.mesh.as_mut().unwrap().splice(an1, an2);
-                }
-            }
-            tess.event = v;
-            let (v_s, v_t) = { let m = tess.mesh.as_ref().unwrap(); (m.verts[v as usize].s, m.verts[v as usize].t) };
-            tess.event_s = v_s; tess.event_t = v_t;
-            tess.sweep_event(v);
-        }
-        tess.done_edge_dict();
-        
-        // Count faces before tessellate_interior
-        {
-            let mesh = tess.mesh.as_ref().unwrap();
-            let mut inside_count = 0;
-            let mut outside_count = 0;
-            let mut f = mesh.faces[F_HEAD as usize].next;
-            while f != F_HEAD {
-                let inside = mesh.faces[f as usize].inside;
-                // Count edges in face's lnext loop
-                let ae = mesh.faces[f as usize].an_edge;
-                let mut edge_count = 0;
-                let mut e = ae;
-                loop {
-                    edge_count += 1;
-                    e = mesh.edges[e as usize].lnext;
-                    if e == ae { break; }
-                    if edge_count > 100 { eprintln!("INFINITE LOOP in face {}!", f); break; }
-                }
-                eprintln!("Face {}: inside={} edge_count={}", f, inside, edge_count);
-                if inside { inside_count += 1; } else { outside_count += 1; }
-                f = mesh.faces[f as usize].next;
-            }
-            eprintln!("BEFORE tessellate_interior: inside={} outside={}", inside_count, outside_count);
-        }
-        
-        // Run tessellate_interior
-        tess.mesh.as_mut().unwrap().tessellate_interior();
-        
-        // Count faces after tessellate_interior
-        let mesh = tess.mesh.as_ref().unwrap();
-        let mut inside_count = 0;
-        let mut outside_count = 0;
-        let mut f = mesh.faces[F_HEAD as usize].next;
-        while f != F_HEAD {
-            let inside = mesh.faces[f as usize].inside;
-            if inside { inside_count += 1; } else { outside_count += 1; }
-            f = mesh.faces[f as usize].next;
-        }
-        eprintln!("AFTER tessellate_interior: inside={} outside={}", inside_count, outside_count);
-    }
-
-    #[test]
-    fn debug_simple_quad() {
-        let mut tess = Tessellator::new();
-        tess.add_contour(2, &[0.0f32, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]);
-        let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
-        eprintln!("simple_quad: ok={} element_count={}", ok, tess.element_count());
-    }
-
-    #[test]
-    fn debug_single_triangle() {
-        use crate::mesh::{F_HEAD, E_HEAD, V_HEAD, INVALID as MESH_INVALID};
-
-        let mut tess = Tessellator::new();
-        tess.add_contour(2, &[0.0f32, 0.0, 0.0, 1.0, 1.0, 0.0]);
-
-        // Run compute_interior manually but keep mesh alive
-        tess.winding_rule = WindingRule::Positive;
-        if !tess.project_polygon() { panic!("project_polygon failed"); }
-
-        // Print mesh state before sweep
-        {
-            let mesh = tess.mesh.as_ref().unwrap();
-            eprintln!("=== After add_contour + project_polygon ===");
-            // Print all edges (even and odd)
-            for ei in 2..mesh.edges.len() {
-                let e = ei as u32;
-                let org = mesh.edges[e as usize].org;
-                let (os, ot) = if org != MESH_INVALID && (org as usize) < mesh.verts.len() {
-                    (mesh.verts[org as usize].s, mesh.verts[org as usize].t)
-                } else { (-999.0, -999.0) };
-                let lface = mesh.edges[e as usize].lface;
-                let winding = mesh.edges[e as usize].winding;
-                eprintln!("  Edge {}: org={} ({:.1},{:.1}) lface={} w={} onext={} lnext={} next={}",
-                    e, org, os, ot, lface, winding,
-                    mesh.edges[e as usize].onext,
-                    mesh.edges[e as usize].lnext,
-                    mesh.edges[e as usize].next);
-            }
-            let mut v = mesh.verts[V_HEAD as usize].next;
-            while v != V_HEAD {
-                eprintln!("  Vertex {}: s={} t={} an_edge={}", v, mesh.verts[v as usize].s, mesh.verts[v as usize].t, mesh.verts[v as usize].an_edge);
-                v = mesh.verts[v as usize].next;
-            }
-        }
-
-        if !tess.compute_interior() { panic!("compute_interior failed"); }
-
-        // Count faces with inside=true
-        let mesh = tess.mesh.as_ref().unwrap();
-        let mut inside_count = 0;
-        let mut total_faces = 0;
-        let mut f = mesh.faces[F_HEAD as usize].next;
-        while f != F_HEAD {
-            total_faces += 1;
-            if mesh.faces[f as usize].inside {
-                inside_count += 1;
-            }
-            eprintln!("  Face {}: inside={} an_edge={}", f, mesh.faces[f as usize].inside, mesh.faces[f as usize].an_edge);
-            f = mesh.faces[f as usize].next;
-        }
-        eprintln!("Total faces: {}, inside: {}", total_faces, inside_count);
-    }
-
-    #[test]
-    fn empty_polyline() {
-        let mut tess = TessellatorApi::new();
-        tess.add_contour(2, &[]);
-        let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
-        assert!(ok);
-        assert_eq!(tess.element_count(), 0);
-    }
-
-    #[test]
-    fn invalid_input_status() {
-        let mut tess = TessellatorApi::new();
-        tess.add_contour(2, &[-2e37f32, 0.0, 0.0, 5.0, 1e37f32, -5.0]);
-        let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
-        assert!(!ok);
-        assert_eq!(tess.status(), TessStatus::InvalidInput);
-    }
-
-    #[test]
-    fn nan_quad_fails_gracefully() {
-        let nan = f32::NAN;
-        let mut tess = TessellatorApi::new();
-        tess.add_contour(2, &[nan, nan, nan, nan, nan, nan, nan, nan]);
-        let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
-        // NaN is not a valid coord, so should fail with InvalidInput
-        assert!(!ok);
-    }
-
-    #[test]
-    fn float_overflow_quad_does_not_panic() {
-        let min = f32::MIN;
-        let max = f32::MAX;
-        let mut tess = TessellatorApi::new();
-        tess.add_contour(2, &[min, min, min, max, max, max, max, min]);
-        let _ = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
-    }
-
-    #[test]
-    fn singularity_quad_no_panic() {
-        let mut tess = TessellatorApi::new();
-        tess.add_contour(2, &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
-        let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
-        // Either succeeds with 0 elements or fails gracefully
-        if ok { assert_eq!(tess.element_count(), 0); }
+    fn default() -> Self {
+        Self::new()
     }
 }

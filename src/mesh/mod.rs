@@ -15,6 +15,8 @@
 //     - faces[0] = fHead (dummy face)
 //     - edges[0] = eHead, edges[1] = eHeadSym (dummy edge pair)
 
+mod delaunay;
+
 use crate::geom::{vert_ccw, Real};
 
 pub const INVALID: u32 = u32::MAX;
@@ -304,7 +306,7 @@ impl Mesh {
         let mut e_s = HalfEdge::default();
         e_s.next = e_prev;
 
-        self.edges.push(e);   // index e_new
+        self.edges.push(e); // index e_new
         self.edges.push(e_s); // index e_sym
 
         // ePrev->Sym->next = e_new  →  edges[e_prev^1].next = e_new
@@ -475,16 +477,6 @@ impl Mesh {
         self.edges[(e_del ^ 1) as usize].next = INVALID;
     }
 
-    /// Low-level splice primitive: exchanges a->Onext and b->Onext.
-    fn raw_splice(&mut self, a: EdgeIdx, b: EdgeIdx) {
-        let a_onext = self.edges[a as usize].onext;
-        let b_onext = self.edges[b as usize].onext;
-        self.edges[(a_onext ^ 1) as usize].lnext = b;
-        self.edges[(b_onext ^ 1) as usize].lnext = a;
-        self.edges[a as usize].onext = b_onext;
-        self.edges[b as usize].onext = a_onext;
-    }
-
     // ──────────────────────── Public mesh operations ──────────────────────────
 
     /// tessMeshMakeEdge: creates one edge, two vertices, and a loop (face).
@@ -607,7 +599,9 @@ impl Mesh {
     /// and eNew->Dst is a new vertex. eOrg and eNew share the same left face.
     pub fn add_edge_vertex(&mut self, e_org: EdgeIdx) -> Option<EdgeIdx> {
         let e_new = self.make_edge_pair(e_org);
-        if e_new == INVALID { return None; }
+        if e_new == INVALID {
+            return None;
+        }
         let e_new_sym = e_new ^ 1;
 
         // Connect: eNew is inserted after eOrg in the Lnext ring
@@ -815,13 +809,19 @@ impl Mesh {
             let vf = self.dst(vf_edge);
 
             let convex = vert_ccw(
-                self.verts[va as usize].s, self.verts[va as usize].t,
-                self.verts[vb as usize].s, self.verts[vb as usize].t,
-                self.verts[vc as usize].s, self.verts[vc as usize].t,
+                self.verts[va as usize].s,
+                self.verts[va as usize].t,
+                self.verts[vb as usize].s,
+                self.verts[vb as usize].t,
+                self.verts[vc as usize].s,
+                self.verts[vc as usize].t,
             ) && vert_ccw(
-                self.verts[vd as usize].s, self.verts[vd as usize].t,
-                self.verts[ve as usize].s, self.verts[ve as usize].t,
-                self.verts[vf as usize].s, self.verts[vf as usize].t,
+                self.verts[vd as usize].s,
+                self.verts[vd as usize].t,
+                self.verts[ve as usize].s,
+                self.verts[ve as usize].t,
+                self.verts[vf as usize].s,
+                self.verts[vf as usize].t,
             );
 
             if convex {
@@ -937,7 +937,7 @@ impl Mesh {
     /// Tessellate a single monotone region (face).
     /// The face must be a CCW-oriented simple polygon.
     pub fn tessellate_mono_region(&mut self, face: FaceIdx) -> bool {
-        use crate::geom::{vert_leq, edge_sign};
+        use crate::geom::{edge_sign, vert_leq};
 
         let mut up = self.faces[face as usize].an_edge;
         assert!(
@@ -953,8 +953,10 @@ impl Mesh {
             let up_dst = self.dst(up);
             let up_org = self.edges[up as usize].org;
             if !vert_leq(
-                self.verts[up_dst as usize].s, self.verts[up_dst as usize].t,
-                self.verts[up_org as usize].s, self.verts[up_org as usize].t,
+                self.verts[up_dst as usize].s,
+                self.verts[up_dst as usize].t,
+                self.verts[up_org as usize].s,
+                self.verts[up_org as usize].t,
             ) {
                 break;
             }
@@ -964,8 +966,10 @@ impl Mesh {
             let up_org = self.edges[up as usize].org;
             let up_dst = self.dst(up);
             if !vert_leq(
-                self.verts[up_org as usize].s, self.verts[up_org as usize].t,
-                self.verts[up_dst as usize].s, self.verts[up_dst as usize].t,
+                self.verts[up_org as usize].s,
+                self.verts[up_org as usize].t,
+                self.verts[up_dst as usize].s,
+                self.verts[up_dst as usize].t,
             ) {
                 break;
             }
@@ -978,8 +982,10 @@ impl Mesh {
             let up_dst = self.dst(up);
             let lo_org = self.edges[lo as usize].org;
             if vert_leq(
-                self.verts[up_dst as usize].s, self.verts[up_dst as usize].t,
-                self.verts[lo_org as usize].s, self.verts[lo_org as usize].t,
+                self.verts[up_dst as usize].s,
+                self.verts[up_dst as usize].t,
+                self.verts[lo_org as usize].s,
+                self.verts[lo_org as usize].t,
             ) {
                 // up->Dst is on the left; make triangles from lo->Org
                 while self.edges[lo as usize].lnext != up {
@@ -989,9 +995,12 @@ impl Mesh {
                     let lo_dst = self.dst(lo);
                     let goes_left = self.edge_goes_left(lo_lnext);
                     let sign_val = edge_sign(
-                        self.verts[lo_org2 as usize].s, self.verts[lo_org2 as usize].t,
-                        self.verts[lo_dst as usize].s, self.verts[lo_dst as usize].t,
-                        self.verts[lo_lnext_dst as usize].s, self.verts[lo_lnext_dst as usize].t,
+                        self.verts[lo_org2 as usize].s,
+                        self.verts[lo_org2 as usize].t,
+                        self.verts[lo_dst as usize].s,
+                        self.verts[lo_dst as usize].t,
+                        self.verts[lo_lnext_dst as usize].s,
+                        self.verts[lo_lnext_dst as usize].t,
                     );
                     if !goes_left && sign_val > 0.0 {
                         break;
@@ -1012,9 +1021,12 @@ impl Mesh {
                     let up_org2 = self.edges[up as usize].org;
                     let goes_right = self.edge_goes_right(up_lprev);
                     let sign_val = edge_sign(
-                        self.verts[up_dst2 as usize].s, self.verts[up_dst2 as usize].t,
-                        self.verts[up_org2 as usize].s, self.verts[up_org2 as usize].t,
-                        self.verts[up_lprev_org as usize].s, self.verts[up_lprev_org as usize].t,
+                        self.verts[up_dst2 as usize].s,
+                        self.verts[up_dst2 as usize].t,
+                        self.verts[up_org2 as usize].s,
+                        self.verts[up_org2 as usize].t,
+                        self.verts[up_lprev_org as usize].s,
+                        self.verts[up_lprev_org as usize].t,
                     );
                     if !goes_right && sign_val < 0.0 {
                         break;
@@ -1056,106 +1068,6 @@ impl Mesh {
         true
     }
 
-    /// Compute the in-circle predicate for Delaunay refinement.
-    pub fn in_circle(
-        v_s: Real, v_t: Real,
-        v0_s: Real, v0_t: Real,
-        v1_s: Real, v1_t: Real,
-        v2_s: Real, v2_t: Real,
-    ) -> Real {
-        let adx = v0_s - v_s;
-        let ady = v0_t - v_t;
-        let bdx = v1_s - v_s;
-        let bdy = v1_t - v_t;
-        let cdx = v2_s - v_s;
-        let cdy = v2_t - v_t;
-
-        let ab_det = adx * bdy - bdx * ady;
-        let bc_det = bdx * cdy - cdx * bdy;
-        let ca_det = cdx * ady - adx * cdy;
-
-        let a_lift = adx * adx + ady * ady;
-        let b_lift = bdx * bdx + bdy * bdy;
-        let c_lift = cdx * cdx + cdy * cdy;
-
-        a_lift * bc_det + b_lift * ca_det + c_lift * ab_det
-    }
-
-    /// Check if an edge is locally Delaunay.
-    pub fn edge_is_locally_delaunay(&self, e: EdgeIdx) -> bool {
-        let e_sym = e ^ 1;
-        let e_sym_lnext = self.edges[e_sym as usize].lnext;
-        let e_sym_lnext_lnext = self.edges[e_sym_lnext as usize].lnext;
-        let e_lnext = self.edges[e as usize].lnext;
-        let e_lnext_lnext = self.edges[e_lnext as usize].lnext;
-
-        let v = self.edges[e_sym_lnext_lnext as usize].org;
-        let v0 = self.edges[e_lnext as usize].org;
-        let v1 = self.edges[e_lnext_lnext as usize].org;
-        let v2 = self.edges[e as usize].org;
-
-        Self::in_circle(
-            self.verts[v as usize].s, self.verts[v as usize].t,
-            self.verts[v0 as usize].s, self.verts[v0 as usize].t,
-            self.verts[v1 as usize].s, self.verts[v1 as usize].t,
-            self.verts[v2 as usize].s, self.verts[v2 as usize].t,
-        ) < 0.0
-    }
-
-    /// Refine a valid triangulation into a Constrained Delaunay Triangulation.
-    pub fn refine_delaunay(&mut self) {
-        let mut stack: Vec<EdgeIdx> = Vec::new();
-
-        // Mark all internal edges and push them
-        let mut f = self.faces[F_HEAD as usize].next;
-        while f != F_HEAD {
-            if self.faces[f as usize].inside {
-                let e_start = self.faces[f as usize].an_edge;
-                let mut e = e_start;
-                loop {
-                    let is_internal = self.edge_is_internal(e);
-                    self.edges[e as usize].mark = is_internal;
-                    if is_internal && !self.edges[(e ^ 1) as usize].mark {
-                        stack.push(e);
-                    }
-                    e = self.edges[e as usize].lnext;
-                    if e == e_start {
-                        break;
-                    }
-                }
-            }
-            f = self.faces[f as usize].next;
-        }
-
-        let max_iter = stack.len() * stack.len() + 1;
-        let mut iter = 0;
-
-        while let Some(e) = stack.pop() {
-            if iter >= max_iter {
-                break;
-            }
-            iter += 1;
-            self.edges[e as usize].mark = false;
-            self.edges[(e ^ 1) as usize].mark = false;
-
-            if !self.edge_is_locally_delaunay(e) {
-                let neighbors = [
-                    self.edges[e as usize].lnext,
-                    self.lprev(e),
-                    self.edges[(e ^ 1) as usize].lnext,
-                    self.lprev(e ^ 1),
-                ];
-                self.flip_edge(e);
-                for &nb in &neighbors {
-                    if !self.edges[nb as usize].mark && self.edge_is_internal(nb) {
-                        self.edges[nb as usize].mark = true;
-                        self.edges[(nb ^ 1) as usize].mark = true;
-                        stack.push(nb);
-                    }
-                }
-            }
-        }
-    }
 }
 
 impl Default for Mesh {

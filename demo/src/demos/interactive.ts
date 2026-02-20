@@ -1,6 +1,7 @@
 // Interactive polygon editor demo
 import { tessellate, WindingRule, WINDING_RULES } from '../wasm.ts';
 import { makeCanvas, drawTessellation, COLORS } from '../render-canvas.ts';
+import { persistControls } from '../state.ts';
 
 interface Point { x: number; y: number; }
 type Contour = Point[];
@@ -120,7 +121,7 @@ export function init(container: HTMLElement): (() => void) {
         reversed: c.reversed,
       }));
       const result = tessellate(inputContours, wr);
-      if (result && result.triangleCount > 0) {
+      if (result && result.elementCount > 0) {
         // Map tessellated vertices to screen
         const sv = new Float32Array(result.vertices.length);
         for (let i = 0; i < result.vertices.length; i += 2) {
@@ -147,7 +148,7 @@ export function init(container: HTMLElement): (() => void) {
           ctx.lineTo(sv[i2], sv[i2+1]);
           ctx.closePath(); ctx.stroke();
         }
-        statsEl.textContent = `${result.triangleCount} triangle(s) · ${result.vertices.length/2} output vertices`;
+        statsEl.textContent = `${result.elementCount} triangle(s) · ${result.vertices.length/2} output vertices`;
       } else {
         statsEl.textContent = result ? '0 triangles' : 'Tessellation failed';
       }
@@ -237,6 +238,7 @@ export function init(container: HTMLElement): (() => void) {
     render();
   });
 
+  persistControls('interactive', container);
   windingSel.addEventListener('change', render);
   reverseCb.addEventListener('change', () => { current.reversed = reverseCb.checked; });
 

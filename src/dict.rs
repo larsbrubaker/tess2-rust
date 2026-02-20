@@ -16,7 +16,7 @@ pub type NodeIdx = u32;
 
 #[derive(Clone, Debug)]
 pub struct DictNode {
-    pub key: u32,        // ActiveRegion index, or INVALID for sentinel
+    pub key: u32, // ActiveRegion index, or INVALID for sentinel
     pub next: NodeIdx,
     pub prev: NodeIdx,
 }
@@ -49,9 +49,7 @@ impl Dict {
         head.next = DICT_HEAD;
         head.prev = DICT_HEAD;
 
-        Dict {
-            nodes: vec![head],
-        }
+        Dict { nodes: vec![head] }
     }
 
     /// dictInsert: insert a key at the back (before the head sentinel).

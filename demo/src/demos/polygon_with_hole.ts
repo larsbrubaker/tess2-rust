@@ -1,6 +1,7 @@
 // Polygon with Hole demo
 import { tessellate } from '../wasm.ts';
 import { makeCanvas, drawTessellation, COLORS } from '../render-canvas.ts';
+import { persistControls } from '../state.ts';
 
 export function init(container: HTMLElement): void {
   container.innerHTML = `
@@ -55,9 +56,10 @@ export function init(container: HTMLElement): void {
       fillInput: false,
       inputContours: [outer, inner],
     });
-    statsEl.textContent = `${result.triangleCount} triangle(s) · ${result.vertices.length/2} vertices`;
+    statsEl.textContent = `${result.elementCount} triangle(s) · ${result.vertices.length/2} vertices`;
   }
 
+  persistControls('polygon_with_hole', container);
   windingSel.addEventListener('change', render);
   render();
 }

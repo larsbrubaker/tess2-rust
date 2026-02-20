@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bun run server.ts",
+    "dev": "bun run dev.ts",
+    "serve": "bun run server.ts",
     "build": "bun run build.ts"
   },
   "devDependencies": {

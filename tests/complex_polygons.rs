@@ -120,6 +120,132 @@ fn dude_dat() {
 }
 
 #[test]
+fn dude_tessellation_area_matches_polygon() {
+    let data = include_str!("data/dude.dat");
+    let contours = helpers::parse_contours(data);
+    assert_eq!(contours.len(), 1, "dude should be a single contour");
+
+    let polygon_area = helpers::polygon_signed_area(&contours[0]).abs();
+    assert!(polygon_area > 0.0, "dude polygon should have non-zero area");
+
+    // Compute input bounding box
+    let input_verts = &contours[0];
+    let mut ixmin = f32::INFINITY;
+    let mut ixmax = f32::NEG_INFINITY;
+    let mut iymin = f32::INFINITY;
+    let mut iymax = f32::NEG_INFINITY;
+    for i in (0..input_verts.len()).step_by(2) {
+        ixmin = ixmin.min(input_verts[i]);
+        ixmax = ixmax.max(input_verts[i]);
+        iymin = iymin.min(input_verts[i + 1]);
+        iymax = iymax.max(input_verts[i + 1]);
+    }
+    eprintln!(
+        "Input: {} vertices, bbox=({:.1},{:.1})-({:.1},{:.1}), signed_area={:.1}, abs_area={:.1}",
+        input_verts.len() / 2,
+        ixmin, iymin, ixmax, iymax,
+        helpers::polygon_signed_area(input_verts),
+        polygon_area
+    );
+
+    let tess = helpers::tessellate_contours(&contours, WindingRule::Odd);
+    let out_verts = tess.vertices();
+    let out_elems = tess.elements();
+
+    eprintln!(
+        "Output: {} vertices, {} elements (triangles={})",
+        tess.vertex_count(),
+        out_elems.len(),
+        tess.element_count()
+    );
+
+    // Check output vertex bounding box
+    let mut oxmin = f32::INFINITY;
+    let mut oxmax = f32::NEG_INFINITY;
+    let mut oymin = f32::INFINITY;
+    let mut oymax = f32::NEG_INFINITY;
+    for i in (0..out_verts.len()).step_by(2) {
+        oxmin = oxmin.min(out_verts[i]);
+        oxmax = oxmax.max(out_verts[i]);
+        oymin = oymin.min(out_verts[i + 1]);
+        oymax = oymax.max(out_verts[i + 1]);
+    }
+    eprintln!(
+        "Output bbox=({:.1},{:.1})-({:.1},{:.1})",
+        oxmin, oymin, oxmax, oymax
+    );
+
+    // Find triangles whose centroid is outside the input bounding box
+    let tess_area = helpers::total_tessellation_area(&tess);
+    let mut outside_count = 0;
+    let mut outside_area = 0.0f32;
+    for tri in out_elems.chunks(3) {
+        if tri.len() < 3 { break; }
+        let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+        let (x0, y0) = (out_verts[i0*2], out_verts[i0*2+1]);
+        let (x1, y1) = (out_verts[i1*2], out_verts[i1*2+1]);
+        let (x2, y2) = (out_verts[i2*2], out_verts[i2*2+1]);
+        let cx = (x0 + x1 + x2) / 3.0;
+        let cy = (y0 + y1 + y2) / 3.0;
+        let area = helpers::triangle_area(x0, y0, x1, y1, x2, y2).abs();
+        if cx < ixmin || cx > ixmax || cy < iymin || cy > iymax {
+            outside_count += 1;
+            outside_area += area;
+            if outside_count <= 5 {
+                eprintln!(
+                    "  Outside tri: centroid=({:.1},{:.1}), area={:.1}, verts=({:.1},{:.1}),({:.1},{:.1}),({:.1},{:.1})",
+                    cx, cy, area, x0, y0, x1, y1, x2, y2
+                );
+            }
+        }
+    }
+    let tess_signed_area = helpers::total_tessellation_signed_area(&tess);
+    eprintln!(
+        "Tessellation abs_area={:.1}, signed_area={:.1}, polygon area={:.1}, ratio={:.4}",
+        tess_area, tess_signed_area, polygon_area, tess_area / polygon_area
+    );
+    eprintln!(
+        "{} triangles with centroid outside bbox, total outside area={:.1}",
+        outside_count, outside_area
+    );
+
+    // Count positive vs negative orientation triangles
+    let mut pos_count = 0;
+    let mut neg_count = 0;
+    let mut pos_area = 0.0f32;
+    let mut neg_area = 0.0f32;
+    for tri in out_elems.chunks(3) {
+        if tri.len() < 3 { break; }
+        let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+        let a = helpers::triangle_area(
+            out_verts[i0*2], out_verts[i0*2+1],
+            out_verts[i1*2], out_verts[i1*2+1],
+            out_verts[i2*2], out_verts[i2*2+1],
+        );
+        if a >= 0.0 {
+            pos_count += 1;
+            pos_area += a;
+        } else {
+            neg_count += 1;
+            neg_area += a;
+        }
+    }
+    eprintln!(
+        "Positive triangles: {} (area={:.1}), Negative triangles: {} (area={:.1})",
+        pos_count, pos_area, neg_count, neg_area
+    );
+
+    let ratio = tess_area / polygon_area;
+    assert!(
+        (0.95..=1.05).contains(&ratio),
+        "dude: tessellation area ({:.1}) should match polygon area ({:.1}), ratio={:.4}",
+        tess_area,
+        polygon_area,
+        ratio,
+    );
+}
+
+#[test]
 fn bird_dat() {
     // The bird polygon is complex and may trigger edge cases in the tessellator.
     // We test that it either succeeds with valid output or fails gracefully (no UB).

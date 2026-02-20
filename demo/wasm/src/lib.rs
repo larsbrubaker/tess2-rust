@@ -1,8 +1,8 @@
 // Copyright 2025 Lars Brubaker
 // WASM bindings for tess2-rust
 
+use tess2_rust::{ElementType, TessOption, Tessellator, WindingRule};
 use wasm_bindgen::prelude::*;
-use tess2_rust::{Tessellator, TessOption, WindingRule, ElementType};
 
 #[wasm_bindgen(start)]
 pub fn main_js() {
@@ -22,7 +22,9 @@ pub struct TessellatorJs {
 impl TessellatorJs {
     #[wasm_bindgen(constructor)]
     pub fn new() -> TessellatorJs {
-        TessellatorJs { inner: Tessellator::new() }
+        TessellatorJs {
+            inner: Tessellator::new(),
+        }
     }
 
     /// Add a contour from a flat [x0,y0, x1,y1, ...] Float32Array.
@@ -47,9 +49,26 @@ impl TessellatorJs {
         self.inner.tessellate(wr, ElementType::Polygons, 3, 2, None)
     }
 
-    /// Number of output triangles.
+    /// Tessellate with full control over element type and polygon size.
+    /// element_type: 0=Polygons 1=ConnectedPolygons 2=BoundaryContours
+    pub fn tessellate_full(&mut self, winding: u32, element_type: u32, poly_size: u32) -> bool {
+        let wr = winding_rule(winding);
+        let et = match element_type {
+            0 => ElementType::Polygons,
+            1 => ElementType::ConnectedPolygons,
+            2 => ElementType::BoundaryContours,
+            _ => ElementType::Polygons,
+        };
+        self.inner.tessellate(wr, et, poly_size as usize, 2, None)
+    }
+
+    /// Number of output elements (triangles, polygons, or contours depending on element type).
     pub fn element_count(&self) -> u32 {
         self.inner.element_count() as u32
+    }
+
+    pub fn vertex_count(&self) -> u32 {
+        self.inner.vertex_count() as u32
     }
 
     /// Flat triangle vertex-index triples [i0,i1,i2, ...].
@@ -80,7 +99,9 @@ fn winding_rule(winding: u32) -> WindingRule {
 pub fn tessellate_polygon(vertices: &[f32], winding: u32) -> Vec<f32> {
     let mut t = TessellatorJs::new();
     t.add_contour(vertices);
-    if !t.tessellate(winding) { return Vec::new(); }
+    if !t.tessellate(winding) {
+        return Vec::new();
+    }
     t.get_vertices()
 }
 
@@ -89,6 +110,8 @@ pub fn tessellate_polygon(vertices: &[f32], winding: u32) -> Vec<f32> {
 pub fn tessellate_polygon_elements(vertices: &[f32], winding: u32) -> Vec<u32> {
     let mut t = TessellatorJs::new();
     t.add_contour(vertices);
-    if !t.tessellate(winding) { return Vec::new(); }
+    if !t.tessellate(winding) {
+        return Vec::new();
+    }
     t.get_elements()
 }

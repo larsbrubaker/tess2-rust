@@ -4,13 +4,11 @@ import { initWasm } from './wasm.ts';
 
 type DemoInit = (container: HTMLElement) => (() => void) | void;
 const demoModules: Record<string, () => Promise<{ init: DemoInit }>> = {
-  'single_triangle':  () => import('./demos/single_triangle.ts'),
-  'unit_quad':        () => import('./demos/unit_quad.ts'),
+  'basic_shapes':     () => import('./demos/basic_shapes.ts'),
   'polygon_with_hole':() => import('./demos/polygon_with_hole.ts'),
   'winding_rules':    () => import('./demos/winding_rules.ts'),
-  'star':             () => import('./demos/star.ts'),
-  'butterfly':        () => import('./demos/butterfly.ts'),
-  'nested_squares':   () => import('./demos/nested_squares.ts'),
+  'output_modes':     () => import('./demos/output_modes.ts'),
+  'shape_gallery':    () => import('./demos/shape_gallery.ts'),
   'interactive':      () => import('./demos/interactive.ts'),
 };
 
@@ -34,7 +32,7 @@ function showHome(): void {
         <h1>tess2<span>.rs</span></h1>
         <p>
           A pure Rust port of the original SGI <strong>libtess2</strong> polygon tessellation library.
-          Compiles to WebAssembly for live, in-browser demos. All 17 original C++ integration tests pass.
+          Compiles to WebAssembly for live, in-browser demos.
         </p>
         <p style="margin-top:12px">
           <a href="https://github.com/larsbrubaker/tess2-rust" target="_blank" style="color:var(--accent)">
@@ -43,30 +41,30 @@ function showHome(): void {
         </p>
       </div>
       <div class="home-grid">
-        <a href="#/single_triangle" class="home-card">
-          <div class="home-card-icon">▲</div>
-          <div class="home-card-title">Single Triangle</div>
-          <div class="home-card-desc">The simplest polygon — three vertices, one triangle output.</div>
+        <a href="#/basic_shapes" class="home-card">
+          <div class="home-card-icon">△</div>
+          <div class="home-card-title">Basic Shapes</div>
+          <div class="home-card-desc">Triangles, quads, pentagons, and concave shapes — the building blocks of tessellation.</div>
         </a>
         <a href="#/polygon_with_hole" class="home-card">
           <div class="home-card-icon">◯</div>
           <div class="home-card-title">Polygon with Hole</div>
-          <div class="home-card-desc">An outer square with an inner square hole — 8 triangles, matching the reference test.</div>
+          <div class="home-card-desc">An outer square with an inner square hole — contour reversal in action.</div>
         </a>
         <a href="#/winding_rules" class="home-card">
           <div class="home-card-icon">✕</div>
           <div class="home-card-title">Winding Rules</div>
-          <div class="home-card-desc">Compare all five winding rules on self-intersecting polygons.</div>
+          <div class="home-card-desc">All five winding rules compared on stars, bowties, nested shapes, and overlapping polygons.</div>
         </a>
-        <a href="#/star" class="home-card">
-          <div class="home-card-icon">★</div>
-          <div class="home-card-title">Five-Pointed Star</div>
-          <div class="home-card-desc">A pentagram showing how winding rules fill (or skip) the central pentagon.</div>
+        <a href="#/output_modes" class="home-card">
+          <div class="home-card-icon">⬡</div>
+          <div class="home-card-title">Output Modes</div>
+          <div class="home-card-desc">Element types and polygon sizes — triangles, quads, connected polygons, and boundary contours.</div>
         </a>
-        <a href="#/butterfly" class="home-card">
+        <a href="#/shape_gallery" class="home-card">
           <div class="home-card-icon">✦</div>
-          <div class="home-card-title">Butterfly</div>
-          <div class="home-card-desc">A self-intersecting figure-8 contour tessellated under each winding rule.</div>
+          <div class="home-card-title">Shape Gallery</div>
+          <div class="home-card-desc">Real-world polygon datasets — dude, tank, spaceship, and more from poly2tri and GLU test suites.</div>
         </a>
         <a href="#/interactive" class="home-card">
           <div class="home-card-icon">✏</div>

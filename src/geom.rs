@@ -121,10 +121,14 @@ pub fn real_interpolate(mut a: Real, x: Real, mut b: Real, y: Real) -> Real {
 /// Returns (s, t) of the intersection.
 /// The result is guaranteed to lie within the bounding rectangle of both edges.
 pub fn edge_intersect(
-    o1_s: Real, o1_t: Real,
-    d1_s: Real, d1_t: Real,
-    o2_s: Real, o2_t: Real,
-    d2_s: Real, d2_t: Real,
+    o1_s: Real,
+    o1_t: Real,
+    d1_s: Real,
+    d1_t: Real,
+    o2_s: Real,
+    o2_t: Real,
+    d2_s: Real,
+    d2_t: Real,
 ) -> (Real, Real) {
     // Compute s-coordinate of intersection using VertLeq ordering.
     let v_s;

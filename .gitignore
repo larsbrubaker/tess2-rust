@@ -6,3 +6,5 @@ demo_test*
 /demo/node_modules
 bun.lockb
 Cargo.lock
+trace_output*.txt
+/cpp_reference/
