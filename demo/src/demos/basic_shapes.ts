@@ -55,7 +55,7 @@ const SHAPES: ShapeDef[] = [
   {
     name: 'Bowtie',
     contours: [{
-      vertices: [-1.5, -1, 0, 0, 1.5, -1, 1.5, 1, 0, 0, -1.5, 1],
+      vertices: [-1.5, -1, 1.5, 1, 1.5, -1, -1.5, 1],
       reversed: false,
     }],
     description: 'Self-intersecting figure-8. Negative fills nothing (all windings positive for CCW).',
