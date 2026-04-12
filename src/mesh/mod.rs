@@ -940,11 +940,11 @@ impl Mesh {
         use crate::geom::{edge_sign, vert_leq};
 
         let mut up = self.faces[face as usize].an_edge;
-        assert!(
-            self.edges[up as usize].lnext != up
-                && self.edges[self.edges[up as usize].lnext as usize].lnext != up,
-            "face must have at least 3 edges"
-        );
+        if self.edges[up as usize].lnext == up
+            || self.edges[self.edges[up as usize].lnext as usize].lnext == up
+        {
+            return false; // degenerate face (< 3 edges) — skip instead of panic
+        }
 
         // Find the edge whose origin vertex is rightmost (largest s).
         // VertLeq(Dst, Org) means Dst <= Org (going left = bad), so we want
