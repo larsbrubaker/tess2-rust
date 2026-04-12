@@ -165,8 +165,13 @@ impl Mesh {
         while f != F_HEAD {
             let next = self.faces[f as usize].next;
             if self.faces[f as usize].inside {
-                // Skip individual degenerate faces — don't abort the entire tessellation.
-                self.tessellate_mono_region(f);
+                if !self.tessellate_mono_region(f) {
+                    // Mark as outside so the output extraction skips this face.
+                    // Leaving it inside=true would cause degenerate triangles with
+                    // wrong vertices to be emitted (the untriangulated polygon edges
+                    // get read as triangle vertices during output).
+                    self.faces[f as usize].inside = false;
+                }
             }
             f = next;
         }
