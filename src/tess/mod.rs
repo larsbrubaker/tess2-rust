@@ -712,7 +712,9 @@ impl Tessellator {
     /// Insert a region before `start_node` in the dict, walking backward
     /// until the correct sorted position is found. Mirrors C's dictInsertBefore.
     fn dict_insert_before(&mut self, reg: RegionIdx, start_node: NodeIdx) -> NodeIdx {
+        let max_dict_iters = self.dict.nodes.len() + 2;
         let mut node = start_node;
+        let mut dict_iter = 0usize;
         loop {
             node = self.dict.nodes[node as usize].prev;
             let key = self.dict.nodes[node as usize].key;
@@ -721,6 +723,10 @@ impl Tessellator {
             }
             if self.edge_leq(key, reg) {
                 break;
+            }
+            dict_iter += 1;
+            if dict_iter > max_dict_iters {
+                break; // degenerate dict list — avoid infinite walk
             }
         }
         // Insert after `node`
@@ -997,7 +1003,9 @@ impl Tessellator {
             }
             self.mesh.as_ref().unwrap().edges[e as usize].org
         };
+        let max_region_iters = self.regions.len() + 2;
         let mut r = reg;
+        let mut region_iter = 0usize;
         loop {
             r = self.region_above(r);
             if r == INVALID {
@@ -1010,6 +1018,10 @@ impl Tessellator {
             let e_org = self.mesh.as_ref().unwrap().edges[e as usize].org;
             if e_org != org {
                 break;
+            }
+            region_iter += 1;
+            if region_iter > max_region_iters {
+                return INVALID; // degenerate region chain
             }
         }
         // r is now above the topmost region with same origin
@@ -1040,7 +1052,9 @@ impl Tessellator {
             }
             self.mesh.as_ref().unwrap().dst(e)
         };
+        let max_region_iters = self.regions.len() + 2;
         let mut r = reg;
+        let mut region_iter = 0usize;
         loop {
             r = self.region_above(r);
             if r == INVALID {
@@ -1053,6 +1067,10 @@ impl Tessellator {
             let e_dst = self.mesh.as_ref().unwrap().dst(e);
             if e_dst != dst {
                 break;
+            }
+            region_iter += 1;
+            if region_iter > max_region_iters {
+                return INVALID; // degenerate region chain
             }
         }
         r
@@ -1128,13 +1146,21 @@ impl Tessellator {
         e_top_left: EdgeIdx,
         clean_up: bool,
     ) {
-        // Insert right-going edges into the dictionary
+        // Insert right-going edges into the dictionary.
+        // Guard: the onext ring must contain e_last; if it doesn't
+        // (degenerate mesh), break early rather than looping forever.
+        let max_edge_iters = self.mesh.as_ref().unwrap().edges.len() + 2;
         let mut e = e_first;
+        let mut edge_iter = 0usize;
         loop {
             self.add_region_below(reg_up, e ^ 1);
             e = self.mesh.as_ref().unwrap().edges[e as usize].onext;
             if e == e_last {
                 break;
+            }
+            edge_iter += 1;
+            if edge_iter > max_edge_iters {
+                break; // degenerate onext ring — skip remaining edges
             }
         }
 
@@ -1156,6 +1182,8 @@ impl Tessellator {
         let mut reg_prev = reg_up;
         let mut e_prev = e_top_left;
         let mut first_time = true;
+        let max_reg_iters = self.regions.len() + 2;
+        let mut reg_iter2 = 0usize;
 
         loop {
             let reg = self.region_below(reg_prev);
@@ -1177,6 +1205,10 @@ impl Tessellator {
             };
             if e_org != ep_org {
                 break;
+            }
+            reg_iter2 += 1;
+            if reg_iter2 > max_reg_iters {
+                break; // degenerate region chain
             }
 
             if e_prev != INVALID {
@@ -1592,7 +1624,13 @@ impl Tessellator {
         let mut reg_up = reg_up;
         let mut reg_lo = self.region_below(reg_up);
 
+        let max_dirty_iters = self.regions.len() * 4 + 100;
+        let mut dirty_iter = 0usize;
         loop {
+            dirty_iter += 1;
+            if dirty_iter > max_dirty_iters {
+                return; // guard against oscillating dirty-flag loops
+            }
             // Find lowest dirty region
             while reg_lo != INVALID && self.region(reg_lo).dirty {
                 reg_up = reg_lo;
@@ -1933,6 +1971,8 @@ impl Tessellator {
         self.region_mut(tmp_reg).e_up = tmp_e_up;
 
         // C dictSearch: walk forward from head.next until key==NULL or edge_leq(tmp, node.key)
+        let max_fwd_iters = self.dict.nodes.len() + 2;
+        let mut fwd_iter = 0usize;
         let mut node = self.dict.nodes[DICT_HEAD as usize].next;
         let result = loop {
             let key = self.dict.key(node);
@@ -1944,6 +1984,10 @@ impl Tessellator {
                 break key;
             }
             node = self.dict.succ(node);
+            fwd_iter += 1;
+            if fwd_iter > max_fwd_iters {
+                break INVALID; // degenerate dict — stop walking
+            }
         };
 
         self.free_region(tmp_reg);
