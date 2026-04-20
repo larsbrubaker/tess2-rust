@@ -11,6 +11,8 @@ A pure Rust port of [libtess2](https://github.com/memononen/libtess2) — the SG
 
 Crate listing: **[tess2-rust on crates.io](https://crates.io/crates/tess2-rust)**.
 
+> Part of the [rust-apps](https://github.com/larsbrubaker/rust-apps) suite — a collection of Rust graphics and geometry libraries by Lars Brubaker.
+
 ![tess2-rust Interactive Demo — Basic Shapes with tessellation visualization](https://raw.githubusercontent.com/larsbrubaker/tess2-rust/master/demo/src/static/tess2.png)
 
 ## Features
