@@ -22,8 +22,8 @@ use tess2_rust::{ElementType, TessOption, Tessellator, WindingRule};
 /// +aaaaaaaaaaaaaa+
 /// ```
 fn add_polygon_with_hole(tess: &mut Tessellator) {
-    let outer_loop: &[f32] = &[0.0, 0.0, 3.0, 0.0, 3.0, 3.0, 0.0, 3.0];
-    let inner_hole: &[f32] = &[1.0, 1.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0];
+    let outer_loop: &[f64] = &[0.0, 0.0, 3.0, 0.0, 3.0, 3.0, 0.0, 3.0];
+    let inner_hole: &[f64] = &[1.0, 1.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0];
 
     tess.set_option(TessOption::ReverseContours, false);
     tess.add_contour(2, outer_loop);
@@ -116,7 +116,7 @@ fn unit_quad() {
 #[test]
 fn get_status_invalid_input() {
     let mut tess = Tessellator::new();
-    tess.add_contour(2, &[-2e37f32, 0.0, 0.0, 5.0, 1e37f32, -5.0]);
+    tess.add_contour(2, &[-2e37f64, 0.0, 0.0, 5.0, 1e37f64, -5.0]);
     let ok = tessellate_positive_triangles(&mut tess);
     assert!(!ok, "overflow coordinates should fail");
     assert_eq!(tess.get_status(), tess2_rust::TessStatus::InvalidInput);
@@ -132,11 +132,11 @@ fn get_status_ok() {
     assert_eq!(tess.get_status(), tess2_rust::TessStatus::Ok);
 }
 
-/// FloatOverflowQuad: f32::MIN/MAX coordinates → should fail gracefully (no panic)
+/// FloatOverflowQuad: f64::MIN/MAX coordinates → should fail gracefully (no panic)
 #[test]
 fn float_overflow_quad() {
-    let min = f32::MIN;
-    let max = f32::MAX;
+    let min = f64::MIN;
+    let max = f64::MAX;
     let mut tess = Tessellator::new();
     tess.add_contour(2, &[min, min, min, max, max, max, max, min]);
     let _ = tessellate_positive_triangles(&mut tess);
@@ -160,14 +160,14 @@ fn degenerate_quad() {
     tess.add_contour(
         2,
         &[
-            0.0f32,
-            3.40282347e+38f32,
-            0.64113313f32,
-            -1.0f32,
-            -0.0f32,
-            -0.0f32,
-            -3.40282347e+38f32,
-            1.0f32,
+            0.0f64,
+            3.40282347e+38f64,
+            0.64113313f64,
+            -1.0f64,
+            -0.0f64,
+            -0.0f64,
+            -3.40282347e+38f64,
+            1.0f64,
         ],
     );
     let _ = tessellate_positive_triangles(&mut tess);
@@ -177,7 +177,7 @@ fn degenerate_quad() {
 #[test]
 fn width_overflows_tri() {
     let mut tess = Tessellator::new();
-    tess.add_contour(2, &[-2e38f32, 0.0, 0.0, 0.0, 2e38f32, -1.0]);
+    tess.add_contour(2, &[-2e38f64, 0.0, 0.0, 0.0, 2e38f64, -1.0]);
     let _ = tessellate_positive_triangles(&mut tess);
 }
 
@@ -185,7 +185,7 @@ fn width_overflows_tri() {
 #[test]
 fn height_overflows_tri() {
     let mut tess = Tessellator::new();
-    tess.add_contour(2, &[0.0, 0.0, 0.0, 2e38f32, -1.0, -2e38f32]);
+    tess.add_contour(2, &[0.0, 0.0, 0.0, 2e38f64, -1.0, -2e38f64]);
     let _ = tessellate_positive_triangles(&mut tess);
 }
 
@@ -193,14 +193,14 @@ fn height_overflows_tri() {
 #[test]
 fn area_overflows_tri() {
     let mut tess = Tessellator::new();
-    tess.add_contour(2, &[-2e37f32, 0.0, 0.0, 5.0, 1e37f32, -5.0]);
+    tess.add_contour(2, &[-2e37f64, 0.0, 0.0, 5.0, 1e37f64, -5.0]);
     let _ = tessellate_positive_triangles(&mut tess);
 }
 
 /// NanQuad: NaN vertices → should fail gracefully, 0 elements
 #[test]
 fn nan_quad() {
-    let nan = f32::NAN;
+    let nan = f64::NAN;
     let mut tess = Tessellator::new();
     tess.add_contour(2, &[nan, nan, nan, nan, nan, nan, nan, nan]);
     let ok = tessellate_positive_triangles(&mut tess);
@@ -217,62 +217,62 @@ fn avoids_crash_while_finding_intersection() {
     tess.add_contour(
         2,
         &[
-            -1.0f32,
-            0.0f32,
-            0.868218958f32,
-            0.0f32,
-            0.902460039f32,
-            0.0649746507f32,
-            -0.0f32,
-            0.854620099f32,
-            -1.0f32,
-            0.784999669f32,
-            0.0f32,
-            0.0f32,
-            -1.0f32,
-            1.0f32,
-            1.0f32,
-            1.0f32,
-            0.0f32,
-            -1.0f32,
-            3.40282347e+38f32,
-            3.40282347e+38f32,
-            -1.0f32,
-            -1.0f32,
-            -0.0f32,
-            0.442898333f32,
-            0.33078745f32,
-            -0.0f32,
-            -0.0f32,
-            1.0f32,
-            -1.0f32,
-            0.0f32,
-            1.0f32,
-            -0.0f32,
-            0.0f32,
-            0.186138511f32,
-            0.212649569f32,
-            0.886535764f32,
-            1.0f32,
-            0.34795785f32,
-            0.0f32,
-            0.788870096f32,
-            0.853441715f32,
-            -1.0f32,
-            -1.0f32,
-            1.0f32,
-            1.0f32,
-            -0.994903505f32,
-            1.0f32,
-            0.105880626f32,
-            3.40282347e+38f32,
-            3.40282347e+38f32,
-            -1.0f32,
-            3.40282347e+38f32,
-            -0.0f32,
-            0.34419331f32,
-            1.0f32,
-            1.0f32,
+            -1.0f64,
+            0.0f64,
+            0.868218958f64,
+            0.0f64,
+            0.902460039f64,
+            0.0649746507f64,
+            -0.0f64,
+            0.854620099f64,
+            -1.0f64,
+            0.784999669f64,
+            0.0f64,
+            0.0f64,
+            -1.0f64,
+            1.0f64,
+            1.0f64,
+            1.0f64,
+            0.0f64,
+            -1.0f64,
+            3.40282347e+38f64,
+            3.40282347e+38f64,
+            -1.0f64,
+            -1.0f64,
+            -0.0f64,
+            0.442898333f64,
+            0.33078745f64,
+            -0.0f64,
+            -0.0f64,
+            1.0f64,
+            -1.0f64,
+            0.0f64,
+            1.0f64,
+            -0.0f64,
+            0.0f64,
+            0.186138511f64,
+            0.212649569f64,
+            0.886535764f64,
+            1.0f64,
+            0.34795785f64,
+            0.0f64,
+            0.788870096f64,
+            0.853441715f64,
+            -1.0f64,
+            -1.0f64,
+            1.0f64,
+            1.0f64,
+            -0.994903505f64,
+            1.0f64,
+            0.105880626f64,
+            3.40282347e+38f64,
+            3.40282347e+38f64,
+            -1.0f64,
+            3.40282347e+38f64,
+            -0.0f64,
+            0.34419331f64,
+            1.0f64,
+            1.0f64,
         ],
     );
     let _ = tessellate_positive_triangles(&mut tess);
@@ -282,7 +282,7 @@ fn avoids_crash_while_finding_intersection() {
 #[test]
 fn demo_butterfly_no_crash() {
     use std::f64::consts::PI;
-    let butterfly: &[f32] = &[
+    let butterfly: &[f64] = &[
         -1.5, -1.0, 0.0, 0.0, 1.5, -1.0, 1.5, 1.0, 0.0, 0.0, -1.5, 1.0,
     ];
     for wr in [
@@ -300,11 +300,11 @@ fn demo_butterfly_no_crash() {
     // Five-pointed star (pentagram)
     let n = 5usize;
     let step = PI * 2.0 / n as f64;
-    let mut star: Vec<f32> = Vec::new();
+    let mut star: Vec<f64> = Vec::new();
     for i in 0..n {
         let angle = -PI / 2.0 + i as f64 * step * 2.0;
-        star.push(angle.cos() as f32);
-        star.push(angle.sin() as f32);
+        star.push(angle.cos() as f64);
+        star.push(angle.sin() as f64);
     }
     for wr in [
         WindingRule::Odd,
@@ -328,11 +328,11 @@ fn demo_butterfly_no_crash() {
     ] {
         let mut tess = Tessellator::new();
         tess.set_option(TessOption::ReverseContours, false);
-        tess.add_contour(2, &[-3.0f32, -3.0, 3.0, -3.0, 3.0, 3.0, -3.0, 3.0]);
+        tess.add_contour(2, &[-3.0f64, -3.0, 3.0, -3.0, 3.0, 3.0, -3.0, 3.0]);
         tess.set_option(TessOption::ReverseContours, true);
-        tess.add_contour(2, &[-2.0f32, -2.0, -2.0, 2.0, 2.0, 2.0, 2.0, -2.0]);
+        tess.add_contour(2, &[-2.0f64, -2.0, -2.0, 2.0, 2.0, 2.0, 2.0, -2.0]);
         tess.set_option(TessOption::ReverseContours, false);
-        tess.add_contour(2, &[-1.0f32, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0]);
+        tess.add_contour(2, &[-1.0f64, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0]);
         let _ = tess.tessellate(wr, ElementType::Polygons, 3, 2, None);
     }
 }
@@ -343,10 +343,10 @@ fn star_output_vertices() {
     use std::f64::consts::PI;
     let n = 5usize;
     let step = PI * 2.0 / n as f64;
-    let star: Vec<f32> = (0..n)
+    let star: Vec<f64> = (0..n)
         .flat_map(|i| {
             let angle = -PI / 2.0 + i as f64 * step * 2.0;
-            [angle.cos() as f32, angle.sin() as f32]
+            [angle.cos() as f64, angle.sin() as f64]
         })
         .collect();
     println!("Star input: {:?}", star);
@@ -379,12 +379,12 @@ fn star_output_vertices() {
             );
         }
         // Check bounding box is non-degenerate
-        let xs: Vec<f32> = verts.iter().step_by(2).copied().collect();
-        let ys: Vec<f32> = verts.iter().skip(1).step_by(2).copied().collect();
-        let xmin = xs.iter().copied().fold(f32::INFINITY, f32::min);
-        let xmax = xs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        let ymin = ys.iter().copied().fold(f32::INFINITY, f32::min);
-        let ymax = ys.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let xs: Vec<f64> = verts.iter().step_by(2).copied().collect();
+        let ys: Vec<f64> = verts.iter().skip(1).step_by(2).copied().collect();
+        let xmin = xs.iter().copied().fold(f64::INFINITY, f64::min);
+        let xmax = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let ymin = ys.iter().copied().fold(f64::INFINITY, f64::min);
+        let ymax = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         println!(
             "  bbox: x=[{:.3},{:.3}] y=[{:.3},{:.3}]",
             xmin, xmax, ymin, ymax
@@ -413,58 +413,58 @@ fn avoids_crash_in_add_right_edges() {
     tess.add_contour(
         2,
         &[
-            -0.5f32,
-            1.0f32,
-            3.40282347e+38f32,
-            0.0f32,
-            0.349171013f32,
-            1.0f32,
-            1.0f32,
-            0.0f32,
-            1.0f32,
-            -0.0f32,
-            0.594775498f32,
-            -0.0f32,
-            0.0f32,
-            -0.0f32,
-            -0.0f32,
-            1.0f32,
-            0.0f32,
-            1.0f32,
-            2.20929384f32,
-            1.0f32,
-            1.0f32,
-            1.0f32,
-            -0.0f32,
-            -0.0f32,
-            3.40282347e+38f32,
-            -0.0f32,
-            -1.0f32,
-            0.0f32,
-            1.70141173e+38f32,
-            0.391036272f32,
-            3.40282347e+38f32,
-            0.371295959f32,
-            3.40282347e+38f32,
-            -0.0f32,
-            0.0f32,
-            0.234747186f32,
-            -1.0f32,
-            1.0f32,
-            -1.0f32,
-            -0.0f32,
-            3.40282347e+38f32,
-            1.0f32,
-            -0.0f32,
-            -0.0f32,
-            3.40282347e+38f32,
-            1.0f32,
-            0.434241712f32,
-            0.0f32,
-            1.0f32,
-            0.211511821f32,
-            3.40282347e+38f32,
-            1.0f32,
+            -0.5f64,
+            1.0f64,
+            3.40282347e+38f64,
+            0.0f64,
+            0.349171013f64,
+            1.0f64,
+            1.0f64,
+            0.0f64,
+            1.0f64,
+            -0.0f64,
+            0.594775498f64,
+            -0.0f64,
+            0.0f64,
+            -0.0f64,
+            -0.0f64,
+            1.0f64,
+            0.0f64,
+            1.0f64,
+            2.20929384f64,
+            1.0f64,
+            1.0f64,
+            1.0f64,
+            -0.0f64,
+            -0.0f64,
+            3.40282347e+38f64,
+            -0.0f64,
+            -1.0f64,
+            0.0f64,
+            1.70141173e+38f64,
+            0.391036272f64,
+            3.40282347e+38f64,
+            0.371295959f64,
+            3.40282347e+38f64,
+            -0.0f64,
+            0.0f64,
+            0.234747186f64,
+            -1.0f64,
+            1.0f64,
+            -1.0f64,
+            -0.0f64,
+            3.40282347e+38f64,
+            1.0f64,
+            -0.0f64,
+            -0.0f64,
+            3.40282347e+38f64,
+            1.0f64,
+            0.434241712f64,
+            0.0f64,
+            1.0f64,
+            0.211511821f64,
+            3.40282347e+38f64,
+            1.0f64,
         ],
     );
     let _ = tessellate_positive_triangles(&mut tess);
@@ -480,7 +480,7 @@ fn avoids_crash_in_add_right_edges() {
 /// See: https://github.com/memononen/libtess2/issues/31
 #[test]
 fn issue_31_colinear_vertical_right_side() {
-    let vertices: &[f32] = &[-20.0, 5.0, 0.0, 5.0, 0.0, 15.0, 0.0, 25.0, -20.0, 25.0];
+    let vertices: &[f64] = &[-20.0, 5.0, 0.0, 5.0, 0.0, 15.0, 0.0, 25.0, -20.0, 25.0];
 
     let mut tess = Tessellator::new();
     tess.add_contour(2, vertices);
@@ -532,7 +532,7 @@ fn issue_31_colinear_vertical_right_side() {
 /// Issue #31 variant: rotated 180 degrees should not have the colinear issue.
 #[test]
 fn issue_31_colinear_left_side_no_degenerate() {
-    let vertices: &[f32] = &[20.0, -5.0, 0.0, -5.0, 0.0, -15.0, 0.0, -25.0, 20.0, -25.0];
+    let vertices: &[f64] = &[20.0, -5.0, 0.0, -5.0, 0.0, -15.0, 0.0, -25.0, 20.0, -25.0];
 
     let mut tess = Tessellator::new();
     tess.add_contour(2, vertices);
@@ -573,8 +573,8 @@ fn issue_31_colinear_left_side_no_degenerate() {
 /// See: https://github.com/memononen/libtess2/issues/37
 #[test]
 fn issue_37_coincident_edge_hole() {
-    let outer: &[f32] = &[0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
-    let inner: &[f32] = &[0.0, 0.0, 0.0, 5.0, 10.0, 5.0, 10.0, 0.0];
+    let outer: &[f64] = &[0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
+    let inner: &[f64] = &[0.0, 0.0, 0.0, 5.0, 10.0, 5.0, 10.0, 0.0];
 
     let mut tess = Tessellator::new();
     tess.add_contour(2, outer);
@@ -609,8 +609,8 @@ fn issue_37_coincident_edge_hole() {
 #[test]
 fn issue_37_shared_bottom_edge() {
     let mut tess = Tessellator::new();
-    tess.add_contour(2, &[0.0f32, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0]);
-    tess.add_contour(2, &[0.0f32, 5.0, 10.0, 5.0, 10.0, 0.0, 0.0, 0.0]);
+    tess.add_contour(2, &[0.0f64, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0]);
+    tess.add_contour(2, &[0.0f64, 5.0, 10.0, 5.0, 10.0, 0.0, 0.0, 0.0]);
 
     let ok = tess.tessellate(WindingRule::Odd, ElementType::Polygons, 3, 2, None);
     assert!(ok, "shared bottom edge case should tessellate");

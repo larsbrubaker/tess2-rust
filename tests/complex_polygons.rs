@@ -130,10 +130,10 @@ fn dude_tessellation_area_matches_polygon() {
 
     // Compute input bounding box
     let input_verts = &contours[0];
-    let mut ixmin = f32::INFINITY;
-    let mut ixmax = f32::NEG_INFINITY;
-    let mut iymin = f32::INFINITY;
-    let mut iymax = f32::NEG_INFINITY;
+    let mut ixmin = f64::INFINITY;
+    let mut ixmax = f64::NEG_INFINITY;
+    let mut iymin = f64::INFINITY;
+    let mut iymax = f64::NEG_INFINITY;
     for i in (0..input_verts.len()).step_by(2) {
         ixmin = ixmin.min(input_verts[i]);
         ixmax = ixmax.max(input_verts[i]);
@@ -160,10 +160,10 @@ fn dude_tessellation_area_matches_polygon() {
     );
 
     // Check output vertex bounding box
-    let mut oxmin = f32::INFINITY;
-    let mut oxmax = f32::NEG_INFINITY;
-    let mut oymin = f32::INFINITY;
-    let mut oymax = f32::NEG_INFINITY;
+    let mut oxmin = f64::INFINITY;
+    let mut oxmax = f64::NEG_INFINITY;
+    let mut oymin = f64::INFINITY;
+    let mut oymax = f64::NEG_INFINITY;
     for i in (0..out_verts.len()).step_by(2) {
         oxmin = oxmin.min(out_verts[i]);
         oxmax = oxmax.max(out_verts[i]);
@@ -178,7 +178,7 @@ fn dude_tessellation_area_matches_polygon() {
     // Find triangles whose centroid is outside the input bounding box
     let tess_area = helpers::total_tessellation_area(&tess);
     let mut outside_count = 0;
-    let mut outside_area = 0.0f32;
+    let mut outside_area = 0.0f64;
     for tri in out_elems.chunks(3) {
         if tri.len() < 3 { break; }
         let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
@@ -212,8 +212,8 @@ fn dude_tessellation_area_matches_polygon() {
     // Count positive vs negative orientation triangles
     let mut pos_count = 0;
     let mut neg_count = 0;
-    let mut pos_area = 0.0f32;
-    let mut neg_area = 0.0f32;
+    let mut pos_area = 0.0f64;
+    let mut neg_area = 0.0f64;
     for tri in out_elems.chunks(3) {
         if tri.len() < 3 { break; }
         let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);

@@ -5,7 +5,7 @@ mod helpers;
 
 use tess2_rust::{ElementType, Tessellator, WindingRule};
 
-fn tessellate_with_poly_size(vertices: &[f32], poly_size: usize) -> Tessellator {
+fn tessellate_with_poly_size(vertices: &[f64], poly_size: usize) -> Tessellator {
     let mut tess = Tessellator::new();
     tess.add_contour(2, vertices);
     let ok = tess.tessellate(
@@ -31,7 +31,7 @@ fn poly_size_3_triangle() {
 
 #[test]
 fn poly_size_4_quad() {
-    let quad = &[0.0f32, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
+    let quad = &[0.0f64, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
     let tess = tessellate_with_poly_size(quad, 4);
     assert!(
         tess.element_count() >= 1,
@@ -65,10 +65,10 @@ fn poly_size_4_quad() {
 
 #[test]
 fn poly_size_4_pentagon() {
-    use std::f32::consts::PI;
+    use std::f64::consts::PI;
     let mut pent = Vec::new();
     for i in 0..5 {
-        let angle = 2.0 * PI * i as f32 / 5.0 - PI / 2.0;
+        let angle = 2.0 * PI * i as f64 / 5.0 - PI / 2.0;
         pent.push(angle.cos());
         pent.push(angle.sin());
     }
@@ -79,10 +79,10 @@ fn poly_size_4_pentagon() {
 
 #[test]
 fn poly_size_6_hexagon() {
-    use std::f32::consts::PI;
+    use std::f64::consts::PI;
     let mut hex = Vec::new();
     for i in 0..6 {
-        let angle = PI / 3.0 * i as f32;
+        let angle = PI / 3.0 * i as f64;
         hex.push(10.0 * angle.cos());
         hex.push(10.0 * angle.sin());
     }
@@ -111,7 +111,7 @@ fn poly_size_4_complex_shape() {
 
 #[test]
 fn poly_size_3_and_4_same_area() {
-    let quad = &[0.0f32, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
+    let quad = &[0.0f64, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
 
     let tess3 = tessellate_with_poly_size(quad, 3);
     let tess4 = tessellate_with_poly_size(quad, 4);
@@ -121,10 +121,10 @@ fn poly_size_3_and_4_same_area() {
     // For poly_size=4, compute area manually since elements may have 4 vertices
     let verts = tess4.vertices();
     let elems = tess4.elements();
-    let mut area4 = 0.0f32;
+    let mut area4 = 0.0f64;
     for i in 0..tess4.element_count() {
         let base = i * 4;
-        let mut poly_verts: Vec<(f32, f32)> = Vec::new();
+        let mut poly_verts: Vec<(f64, f64)> = Vec::new();
         for j in 0..4 {
             let idx = elems[base + j];
             if idx != u32::MAX {
@@ -158,7 +158,7 @@ fn poly_size_3_and_4_same_area() {
 #[test]
 fn poly_size_16_quad() {
     // Large poly_size on a simple quad - should still work
-    let quad = &[0.0f32, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
+    let quad = &[0.0f64, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
     let tess = tessellate_with_poly_size(quad, 16);
     assert!(tess.element_count() >= 1);
     helpers::verify_valid_output(&tess);

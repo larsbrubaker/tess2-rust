@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Tool that emits the ground-truth tessellation of every polygon in the
+    classic AGG lion dataset, using MatterCAD's `agg-sharp` Tesselator (the
+    same C# port of SGI/libtess2 that drives MatterCAD).
+
+    Its output (`tests/data/lion_tess_reference.txt`) is the reference our
+    Rust integration test compares against — the bar we want tess2-rust to
+    reproduce numerically identically.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LionReferenceGen</RootNamespace>
+    <AssemblyName>LionReferenceGen</AssemblyName>
+  </PropertyGroup>
+
+  <!-- Pull in the battle-tested agg-sharp Tesselate project directly. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\MatterCAD\Submodules\agg-sharp\Tesselate\Tesselate.csproj" />
+  </ItemGroup>
+</Project>

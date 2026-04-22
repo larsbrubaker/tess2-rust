@@ -335,9 +335,20 @@ impl Mesh {
     }
 
     /// Allocate a new vertex and insert it before `v_next` in the vertex list.
+    ///
+    /// Returns `INVALID` if `v_next` itself is `INVALID` (or out of bounds),
+    /// which happens when a caller hands us an edge whose sym-side origin
+    /// has been killed.  We propagate `INVALID` rather than crash so the
+    /// caller can decide whether to abort or continue.
     fn make_vertex(&mut self, e_orig: EdgeIdx, v_next: VertIdx) -> VertIdx {
+        if v_next == INVALID || (v_next as usize) >= self.verts.len() {
+            return INVALID;
+        }
         let v_new = self.verts.len() as VertIdx;
         let v_prev = self.verts[v_next as usize].prev;
+        if v_prev == INVALID || (v_prev as usize) >= self.verts.len() {
+            return INVALID;
+        }
 
         let mut v = Vertex::default();
         v.prev = v_prev;
@@ -612,9 +623,16 @@ impl Mesh {
         let e_org_dst = self.dst(e_org);
         self.edges[e_new as usize].org = e_org_dst;
 
-        // Create new vertex at the other end
+        // Create new vertex at the other end.  If `e_org`'s Dst has been
+        // killed upstream (`dst(e_org)` == INVALID) we can't build a valid
+        // vertex for the new edge — bail instead of indexing INVALID into
+        // `self.verts`.  This can occur when the sweep deletes edges in a
+        // different order than libtess2 expects for some self-intersecting
+        // inputs.
         let v_new = self.make_vertex(e_new_sym, e_org_dst);
-        let _ = v_new;
+        if v_new == INVALID {
+            return None;
+        }
 
         // Both eNew and eNewSym share the same left face as eOrg
         let e_org_lface = self.edges[e_org as usize].lface;
@@ -656,6 +674,14 @@ impl Mesh {
     /// Returns the new half-edge.
     pub fn connect(&mut self, e_org: EdgeIdx, e_dst: EdgeIdx) -> Option<EdgeIdx> {
         let e_new = self.make_edge_pair(e_org);
+        // If `make_edge_pair` couldn't allocate (out-of-bounds seed, broken
+        // `next` chain on the sym side), bail.  Forwarding the `INVALID`
+        // into the subsequent `do_splice`/`kill_face` was the root cause of
+        // the lion-polygon `INVALID do_splice` panic.  Returning `None`
+        // lets `tessellate_mono_region` skip this triangulation step; the
+        // face is then marked non-inside so no degenerate output slips
+        // through (see `tessellate_interior`'s fallback).
+        if e_new == INVALID { return None; }
         let e_new_sym = e_new ^ 1;
 
         let e_dst_lface = self.edges[e_dst as usize].lface;

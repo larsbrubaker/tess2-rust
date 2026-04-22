@@ -14,18 +14,18 @@ use tess2_rust::{ElementType, Tessellator, WindingRule};
 fn tessellate_nested_squares(rule: WindingRule) -> Tessellator {
     let mut tess = Tessellator::new();
     // Outer 6x6 (CCW)
-    tess.add_contour(2, &[-3.0f32, -3.0, 3.0, -3.0, 3.0, 3.0, -3.0, 3.0]);
+    tess.add_contour(2, &[-3.0f64, -3.0, 3.0, -3.0, 3.0, 3.0, -3.0, 3.0]);
     // Middle 4x4 (CW - reversed winding)
-    tess.add_contour(2, &[-2.0f32, -2.0, -2.0, 2.0, 2.0, 2.0, 2.0, -2.0]);
+    tess.add_contour(2, &[-2.0f64, -2.0, -2.0, 2.0, 2.0, 2.0, 2.0, -2.0]);
     // Inner 2x2 (CCW)
-    tess.add_contour(2, &[-1.0f32, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0]);
+    tess.add_contour(2, &[-1.0f64, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0]);
 
     let ok = tess.tessellate(rule, ElementType::Polygons, 3, 2, None);
     assert!(ok, "tessellation failed for {:?}", rule);
     tess
 }
 
-fn assert_area_approx(actual: f32, expected: f32, tolerance: f32, label: &str) {
+fn assert_area_approx(actual: f64, expected: f64, tolerance: f64, label: &str) {
     assert!(
         (actual - expected).abs() < tolerance,
         "{}: expected area ~{}, got {} (diff={})",
@@ -89,7 +89,7 @@ fn winding_abs_geq_two_nested_squares() {
 fn winding_abs_geq_two_overlapping_squares() {
     // Two overlapping CCW squares: 4x4 each, same position.
     // Winding number in the overlap region is 2.
-    let square = &[0.0f32, 0.0, 4.0, 0.0, 4.0, 4.0, 0.0, 4.0];
+    let square = &[0.0f64, 0.0, 4.0, 0.0, 4.0, 4.0, 0.0, 4.0];
     let mut tess = Tessellator::new();
     tess.add_contour(2, square);
     tess.add_contour(2, square);
@@ -103,7 +103,7 @@ fn winding_abs_geq_two_overlapping_squares() {
 // Different winding rules should produce valid results on a self-intersecting star
 #[test]
 fn winding_rules_on_star() {
-    let star: &[f32] = &[
+    let star: &[f64] = &[
         350.0, 75.0, 379.0, 161.0, 469.0, 161.0, 397.0, 215.0, 423.0, 301.0, 350.0, 250.0, 277.0,
         301.0, 303.0, 215.0, 231.0, 161.0, 321.0, 161.0,
     ];

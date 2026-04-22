@@ -4,15 +4,15 @@
 use crate::geom::Real;
 use crate::mesh::{Mesh, V_HEAD, INVALID};
 
-pub(crate) fn is_valid_coord(c: f32) -> bool {
+pub(crate) fn is_valid_coord(c: Real) -> bool {
     c <= super::MAX_VALID_COORD && c >= super::MIN_VALID_COORD && !c.is_nan()
 }
 
-pub(crate) fn dot(u: &[f32; 3], v: &[f32; 3]) -> f32 {
+pub(crate) fn dot(u: &[Real; 3], v: &[Real; 3]) -> Real {
     u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
 }
 
-pub(crate) fn long_axis(v: &[f32; 3]) -> usize {
+pub(crate) fn long_axis(v: &[Real; 3]) -> usize {
     let mut i = 0;
     if v[1].abs() > v[0].abs() {
         i = 1;
@@ -23,7 +23,7 @@ pub(crate) fn long_axis(v: &[f32; 3]) -> usize {
     i
 }
 
-pub(crate) fn short_axis(v: &[f32; 3]) -> usize {
+pub(crate) fn short_axis(v: &[Real; 3]) -> usize {
     let mut i = 0;
     if v[1].abs() < v[0].abs() {
         i = 1;
@@ -34,7 +34,7 @@ pub(crate) fn short_axis(v: &[f32; 3]) -> usize {
     i
 }
 
-pub(crate) fn compute_normal(mesh: &Mesh, norm: &mut [f32; 3]) {
+pub(crate) fn compute_normal(mesh: &Mesh, norm: &mut [Real; 3]) {
     let first_v = mesh.verts[V_HEAD as usize].next;
     if first_v == V_HEAD {
         norm[0] = 0.0;
@@ -43,8 +43,8 @@ pub(crate) fn compute_normal(mesh: &Mesh, norm: &mut [f32; 3]) {
         return;
     }
 
-    let mut max_val = [0f32; 3];
-    let mut min_val = [0f32; 3];
+    let mut max_val = [0.0 as Real; 3];
+    let mut min_val = [0.0 as Real; 3];
     let mut max_vert = [V_HEAD; 3];
     let mut min_vert = [V_HEAD; 3];
 
@@ -94,7 +94,7 @@ pub(crate) fn compute_normal(mesh: &Mesh, norm: &mut [f32; 3]) {
         mesh.verts[v1 as usize].coords[2] - mesh.verts[v2 as usize].coords[2],
     ];
 
-    let mut max_len2 = 0.0f32;
+    let mut max_len2 = 0.0 as Real;
     let mut v = mesh.verts[V_HEAD as usize].next;
     while v != V_HEAD {
         let d2 = [
@@ -124,7 +124,7 @@ pub(crate) fn compute_normal(mesh: &Mesh, norm: &mut [f32; 3]) {
 }
 
 pub(crate) fn check_orientation(mesh: &mut Mesh) {
-    let mut area = 0.0f32;
+    let mut area = 0.0 as Real;
     let mut f = mesh.faces[crate::mesh::F_HEAD as usize].next;
     while f != crate::mesh::F_HEAD {
         let an = mesh.faces[f as usize].an_edge;
@@ -175,7 +175,7 @@ pub(crate) fn compute_intersect_coords(
     let l1 =
         |as_: Real, at: Real, bs: Real, bt: Real| -> Real { (as_ - bs).abs() + (at - bt).abs() };
 
-    let mut coords = [0.0f32; 3];
+    let mut coords = [0.0 as Real; 3];
 
     let t1 = l1(org_up_s, org_up_t, isect_s, isect_t);
     let t2 = l1(dst_up_s, dst_up_t, isect_s, isect_t);

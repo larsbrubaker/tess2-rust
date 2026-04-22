@@ -4,6 +4,18 @@
 use super::{ElementType, TessStatus, Tessellator, TESS_UNDEF};
 use crate::mesh::{F_HEAD, INVALID, V_HEAD};
 
+/// Is the half-edge `e` on the boundary between an inside face and an
+/// outside face (or the void outside the whole mesh)?  That's the tess2
+/// definition of an "original" polygon edge — an edge that came from the
+/// input contour rather than being introduced by the sweep.
+#[inline]
+fn is_boundary_edge(mesh: &crate::mesh::Mesh, e: u32) -> bool {
+    let rf = mesh.rface(e);
+    // lface is always `inside` here because this helper is only called while
+    // walking a face that the caller has already verified is `inside`.
+    rf == INVALID || !mesh.faces[rf as usize].inside
+}
+
 impl Tessellator {
     pub(crate) fn output_polymesh(&mut self, element_type: ElementType, poly_size: usize, vertex_size: usize) {
         if poly_size > 3 {
@@ -66,6 +78,10 @@ impl Tessellator {
         self.out_elements = vec![TESS_UNDEF; max_face as usize * stride];
         self.out_vertices = vec![0.0; max_vert as usize * vertex_size];
         self.out_vertex_indices = vec![TESS_UNDEF; max_vert as usize];
+        // Edge flags run parallel to the *primary* triangle-vertex slice of
+        // `out_elements` (length = `max_face * poly_size`), independent of
+        // the neighbour-face stride used by `ConnectedPolygons`.
+        self.out_edge_flags = vec![0u8; max_face as usize * poly_size];
 
         let mesh = self.mesh.as_ref().unwrap();
         let mut v = mesh.verts[V_HEAD as usize].next;
@@ -84,6 +100,7 @@ impl Tessellator {
         }
 
         let mut ep = 0;
+        let mut efp = 0; // parallel edge-flag cursor (stride = poly_size)
         let mut f = mesh.faces[F_HEAD as usize].next;
         while f != F_HEAD {
             if !mesh.faces[f as usize].inside {
@@ -96,6 +113,12 @@ impl Tessellator {
             loop {
                 let org = mesh.edges[e as usize].org;
                 self.out_elements[ep] = mesh.verts[org as usize].n;
+                // Edge flag: "is the edge starting at this vertex (going
+                // CCW around this face) a boundary edge of the original
+                // polygon?"  In our half-edge representation, the edge
+                // starting at the current `org` is `e` itself — so we test
+                // `e`'s right face.
+                self.out_edge_flags[efp + fv] = if is_boundary_edge(mesh, e) { 1 } else { 0 };
                 ep += 1;
                 fv += 1;
                 e = mesh.edges[e as usize].lnext;
@@ -105,8 +128,11 @@ impl Tessellator {
             }
             for _ in fv..poly_size {
                 self.out_elements[ep] = TESS_UNDEF;
+                // Padding slots inside `out_edge_flags` are already zero
+                // from the initial `vec![0u8; …]`.
                 ep += 1;
             }
+            efp += poly_size;
 
             if element_type == ElementType::ConnectedPolygons {
                 let e_start = mesh.faces[f as usize].an_edge;
@@ -165,6 +191,9 @@ impl Tessellator {
         self.out_elements = vec![TESS_UNDEF; total_elems * 2];
         self.out_vertices = vec![0.0; total_verts * vertex_size];
         self.out_vertex_indices = vec![TESS_UNDEF; total_verts];
+        // No triangles produced in BoundaryContours mode, so edge flags
+        // remain empty (parallel slice would have no meaningful entries).
+        self.out_edge_flags = Vec::new();
 
         let mesh = self.mesh.as_ref().unwrap();
         let mut vp = 0usize;

@@ -54,8 +54,11 @@ pub enum TessStatus {
 }
 
 pub const TESS_UNDEF: u32 = u32::MAX;
-const MAX_VALID_COORD: f32 = (1u32 << 23) as f32;
-const MIN_VALID_COORD: f32 = -MAX_VALID_COORD;
+// Max magnitude that input coordinates can safely take without losing
+// precision in the sweep.  f64's 52-bit mantissa keeps integer coords
+// exact up to 2^53; we keep a conservative margin.
+const MAX_VALID_COORD: Real = (1u64 << 50) as Real;
+const MIN_VALID_COORD: Real = -MAX_VALID_COORD;
 
 type RegionIdx = u32;
 
@@ -91,6 +94,22 @@ pub struct Tessellator {
     pub out_vertices: Vec<Real>,
     pub out_vertex_indices: Vec<u32>,
     pub out_elements: Vec<u32>,
+    /// Per triangle-vertex edge-flag (parallel to `out_elements`).
+    ///
+    /// `1` when the polygon edge starting at this vertex (going to the next
+    /// vertex in CCW order within the same triangle) is an **original
+    /// boundary edge** of the input polygon; `0` when the edge is a new
+    /// interior edge added by the tessellation sweep.
+    ///
+    /// Parallels the C libtess2 / agg-sharp `EdgeFlagCallback` mechanism —
+    /// consumers that want analytic per-edge anti-aliasing (halo strips,
+    /// conservative outlines) look at each triangle's three flags and only
+    /// expand the sides that are actual polygon boundaries.
+    ///
+    /// Populated for `ElementType::Polygons` and `ElementType::ConnectedPolygons`;
+    /// empty for `ElementType::BoundaryContours` (no triangles are emitted in
+    /// that mode).  Length equals `poly_size × element_count`.
+    pub out_edge_flags: Vec<u8>,
     pub out_vertex_count: usize,
     pub out_element_count: usize,
     vertex_index_counter: u32,
@@ -126,6 +145,7 @@ impl Tessellator {
             out_vertices: Vec::new(),
             out_vertex_indices: Vec::new(),
             out_elements: Vec::new(),
+            out_edge_flags: Vec::new(),
             out_vertex_count: 0,
             out_element_count: 0,
             vertex_index_counter: 0,
@@ -144,7 +164,11 @@ impl Tessellator {
     }
 
     /// Add a contour. `size` = 2 or 3 (coords per vertex). `vertices` is flat.
-    pub fn add_contour(&mut self, size: usize, vertices: &[f32]) {
+    ///
+    /// Input type is `Real` — currently `f64` — to avoid losing precision on
+    /// coordinate input.  Callers holding `f32` data should cast element-wise
+    /// at the call site.
+    pub fn add_contour(&mut self, size: usize, vertices: &[Real]) {
         if self.status != TessStatus::Ok {
             return;
         }
@@ -210,7 +234,7 @@ impl Tessellator {
         element_type: ElementType,
         poly_size: usize,
         vertex_size: usize,
-        normal: Option<[f32; 3]>,
+        normal: Option<[Real; 3]>,
     ) -> bool {
         if self.status != TessStatus::Ok {
             return false;
@@ -219,6 +243,7 @@ impl Tessellator {
         self.out_vertices.clear();
         self.out_vertex_indices.clear();
         self.out_elements.clear();
+        self.out_edge_flags.clear();
         self.out_vertex_count = 0;
         self.out_element_count = 0;
         self.normal = normal.unwrap_or([0.0, 0.0, 0.0]);
@@ -258,7 +283,7 @@ impl Tessellator {
     pub fn element_count(&self) -> usize {
         self.out_element_count
     }
-    pub fn vertices(&self) -> &[f32] {
+    pub fn vertices(&self) -> &[Real] {
         &self.out_vertices
     }
     pub fn vertex_indices(&self) -> &[u32] {
@@ -266,6 +291,12 @@ impl Tessellator {
     }
     pub fn elements(&self) -> &[u32] {
         &self.out_elements
+    }
+    /// Per triangle-vertex edge flags (see [`Tessellator::out_edge_flags`]).
+    ///
+    /// Returns an empty slice for `ElementType::BoundaryContours`.
+    pub fn edge_flags(&self) -> &[u8] {
+        &self.out_edge_flags
     }
     pub fn get_status(&self) -> TessStatus {
         self.status
@@ -1928,6 +1959,26 @@ impl Tessellator {
         self.walk_dirty_regions(reg_up);
     }
 
+    /// Mirrors agg-sharp's `ConnectLeftDegenerate` exactly.  Called when the
+    /// current sweep event lies on (or coincident with) an already-processed
+    /// edge — we have to splice the event into that edge rather than adding
+    /// it as a fresh isolated vertex.  Three sub-cases:
+    ///
+    ///   1. `event == e.Org` — the edge's origin was produced by an earlier
+    ///      intersection split and is still in the PQ.  SpliceMergeVertices
+    ///      collapses them into a single vertex.
+    ///   2. `event` lies strictly on `e` (between Org and Dst) — split the
+    ///      edge at `event`, splice, then recurse into `sweep_event` so the
+    ///      new vertex is handled properly.
+    ///   3. `event == e.Dst` — the event coincides with an already-processed
+    ///      destination vertex.  Splice the event's right-going edges into
+    ///      `eTopRight` so they join the mesh at the right place.
+    ///
+    /// The previous Rust port handled only case 1 and fell back to
+    /// `check_for_right_splice` for cases 2 and 3, which produced the
+    /// "eye" rendering artefacts on the lion's self-intersecting polygons
+    /// and occasionally a panic during rotation when the mesh was left in
+    /// an inconsistent state.
     fn connect_left_degenerate(&mut self, reg_up: RegionIdx, v_event: VertIdx) {
         let e_up = self.region(reg_up).e_up;
         if e_up == INVALID {
@@ -1938,29 +1989,112 @@ impl Tessellator {
             self.mesh.as_ref().unwrap().verts[e_up_org as usize].s,
             self.mesh.as_ref().unwrap().verts[e_up_org as usize].t,
         );
+        let e_up_dst = self.mesh.as_ref().unwrap().dst(e_up);
+        let (eud_s, eud_t) = (
+            self.mesh.as_ref().unwrap().verts[e_up_dst as usize].s,
+            self.mesh.as_ref().unwrap().verts[e_up_dst as usize].t,
+        );
         let (ev_s, ev_t) = (self.event_s, self.event_t);
 
+        // Case 1: e.Org == event — unprocessed vertex, merge and let the
+        // event come out of the PQ later.
         if vert_eq(euo_s, euo_t, ev_s, ev_t) {
-            // eUp->Org is same as event -- splice them
+            let v_an = self.mesh.as_ref().unwrap().verts[v_event as usize].an_edge;
+            if v_an != INVALID {
+                self.splice_merge_vertices(e_up, v_an);
+            }
+            return;
+        }
+
+        // Case 2: event lies strictly on e (not at either endpoint) —
+        // split the edge at the event, splice in v_event's edges, recurse.
+        if !vert_eq(eud_s, eud_t, ev_s, ev_t) {
+            if self.mesh.as_mut().unwrap().split_edge(e_up ^ 1).is_none() {
+                return;
+            }
+            // If the region had a `fix_upper_edge` flag (temporary sweep
+            // edge), delete the unused portion.
+            if self.region(reg_up).fix_upper_edge {
+                let nxt = self.mesh.as_ref().unwrap().edges[e_up as usize].onext;
+                if nxt != INVALID {
+                    let _ = self.mesh.as_mut().unwrap().delete_edge(nxt);
+                }
+                self.region_mut(reg_up).fix_upper_edge = false;
+            }
             let v_an = self.mesh.as_ref().unwrap().verts[v_event as usize].an_edge;
             if v_an != INVALID {
                 self.mesh.as_mut().unwrap().splice(v_an, e_up);
             }
-            let reg_up2 = self.top_left_region(reg_up);
-            if reg_up2 == INVALID {
-                return;
-            }
-            let rb = self.region_below(reg_up2);
-            let rb_e = self.region(rb).e_up;
-            let rl = self.region_below(rb);
-            self.finish_left_regions(self.region_below(reg_up2), rl);
-            let e_up3 = self.region(rb).e_up;
-            let e_oprev = self.mesh.as_ref().unwrap().oprev(e_up3);
-            self.add_right_edges(reg_up2, e_oprev, e_up3, e_up3, true);
-        } else {
-            // Create a new temporary edge to connect v_event to eUp
-            self.check_for_right_splice(reg_up);
+            // Re-process v_event now that the mesh has a new vertex at the
+            // event position.  Matches C# `SweepEvent(tess, vEvent);` recurse.
+            self.sweep_event(v_event);
+            return;
         }
+
+        // Case 3: event == e.Dst — an already-processed destination
+        // vertex.  Walk up to the top-right region of reg_up and splice
+        // the event's right-going edges into the appropriate Onext ring.
+        let reg_up2 = self.top_right_region(reg_up);
+        if reg_up2 == INVALID {
+            // Fallback: just splice at the current region — better than
+            // leaving the event unattached.
+            self.check_for_right_splice(reg_up);
+            return;
+        }
+        let reg = self.region_below(reg_up2);
+        if reg == INVALID {
+            self.check_for_right_splice(reg_up);
+            return;
+        }
+        let reg_e_up = self.region(reg).e_up;
+        if reg_e_up == INVALID {
+            self.check_for_right_splice(reg_up);
+            return;
+        }
+        let mut e_top_right = reg_e_up ^ 1;
+        let mut e_top_left  = self.mesh.as_ref().unwrap().edges[e_top_right as usize].onext;
+        let mut e_last      = e_top_left;
+        // Temp fixable-edge cleanup — matches C#.
+        if self.region(reg).fix_upper_edge {
+            if e_top_left != e_top_right {
+                self.delete_region(reg);
+                let _ = self.mesh.as_mut().unwrap().delete_edge(e_top_right);
+                e_top_right = self.mesh.as_ref().unwrap().oprev(e_top_left);
+            }
+        }
+        let v_an = self.mesh.as_ref().unwrap().verts[v_event as usize].an_edge;
+        if v_an != INVALID {
+            self.mesh.as_mut().unwrap().splice(v_an, e_top_right);
+        }
+        // C# signals "no left-going edges" by passing null for eTopLeft.
+        // Our `add_right_edges` treats INVALID the same way.
+        if !self.mesh.as_ref().unwrap().edge_goes_left(e_top_left) {
+            e_top_left = INVALID;
+        }
+        let _ = e_last;
+        let e_first = self.mesh.as_ref().unwrap().edges[e_top_right as usize].onext;
+        self.add_right_edges(reg_up2, e_first, e_last, e_top_left, true);
+    }
+
+    /// Port of agg-sharp's `SpliceMergeVertices` — two vertices that the
+    /// sweep has decided are "the same" get their Onext rings spliced
+    /// together so the mesh sees a single vertex.  We skip the user-
+    /// callback combine (no client vertex merging) and just call
+    /// `meshSplice`, matching the no-callback semantics of the C reference.
+    fn splice_merge_vertices(&mut self, e1: EdgeIdx, e2: EdgeIdx) {
+        if e1 == INVALID || e2 == INVALID { return; }
+        // Delete one of the two originals from the PQ if it's still queued
+        // — matches `VertexPriorityQue.Delete(eUp.originVertex.priorityQueueHandle)`
+        // from the C# call site in `CheckForRightSplice`.  Safe to skip
+        // if not queued.
+        let v2_org = self.mesh.as_ref().unwrap().edges[e2 as usize].org;
+        if v2_org != INVALID {
+            let handle = self.mesh.as_ref().unwrap().verts[v2_org as usize].pq_handle;
+            if handle != INVALID_HANDLE {
+                self.pq_delete(handle);
+            }
+        }
+        self.mesh.as_mut().unwrap().splice(e1, e2);
     }
 
     /// Mirrors C's dictSearch: walks forward from head.next, returns the key of
@@ -2211,7 +2345,7 @@ impl TessellatorApi {
     pub fn set_option(&mut self, option: TessOption, value: bool) {
         self.inner.set_option(option, value);
     }
-    pub fn add_contour(&mut self, size: usize, vertices: &[f32]) {
+    pub fn add_contour(&mut self, size: usize, vertices: &[Real]) {
         self.inner.add_contour(size, vertices);
     }
     pub fn tessellate(
@@ -2220,7 +2354,7 @@ impl TessellatorApi {
         element_type: ElementType,
         poly_size: usize,
         vertex_size: usize,
-        normal: Option<[f32; 3]>,
+        normal: Option<[Real; 3]>,
     ) -> bool {
         self.inner
             .tessellate(winding_rule, element_type, poly_size, vertex_size, normal)
@@ -2231,7 +2365,7 @@ impl TessellatorApi {
     pub fn element_count(&self) -> usize {
         self.inner.element_count()
     }
-    pub fn vertices(&self) -> &[f32] {
+    pub fn vertices(&self) -> &[Real] {
         self.inner.vertices()
     }
     pub fn vertex_indices(&self) -> &[u32] {
@@ -2239,6 +2373,10 @@ impl TessellatorApi {
     }
     pub fn elements(&self) -> &[u32] {
         self.inner.elements()
+    }
+    /// Per triangle-vertex edge flags — see [`Tessellator::out_edge_flags`].
+    pub fn edge_flags(&self) -> &[u8] {
+        self.inner.edge_flags()
     }
     pub fn status(&self) -> TessStatus {
         self.inner.get_status()

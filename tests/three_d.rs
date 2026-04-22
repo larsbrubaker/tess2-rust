@@ -8,7 +8,7 @@ use tess2_rust::{ElementType, Tessellator, WindingRule};
 #[test]
 fn vertex_size_3_xy_plane() {
     // 3D quad lying in the XY plane (z=0). Should produce same result as 2D case.
-    let verts_3d: &[f32] = &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+    let verts_3d: &[f64] = &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
 
     let mut tess = Tessellator::new();
     tess.add_contour(3, verts_3d);
@@ -34,7 +34,7 @@ fn vertex_size_3_xy_plane() {
 #[test]
 fn vertex_size_3_xz_plane_with_normal() {
     // Quad in the XZ plane (y=0), normal pointing up [0, 1, 0]
-    let verts_3d: &[f32] = &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    let verts_3d: &[f64] = &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0];
 
     let mut tess = Tessellator::new();
     tess.add_contour(3, verts_3d);
@@ -78,12 +78,12 @@ fn vertex_size_3_xz_plane_with_normal() {
 #[test]
 fn vertex_size_3_tilted_plane() {
     // Triangle on a tilted plane (z = x + y)
-    let verts_3d: &[f32] = &[0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0];
+    let verts_3d: &[f64] = &[0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0];
 
     let normal = [
-        -1.0f32 / 3.0f32.sqrt(),
-        -1.0 / 3.0f32.sqrt(),
-        1.0 / 3.0f32.sqrt(),
+        -1.0f64 / 3.0f64.sqrt(),
+        -1.0 / 3.0f64.sqrt(),
+        1.0 / 3.0f64.sqrt(),
     ];
 
     let mut tess = Tessellator::new();
@@ -102,7 +102,7 @@ fn vertex_size_3_tilted_plane() {
 #[test]
 fn vertex_size_3_no_normal_auto_detect() {
     // 3D triangle, let tessellator auto-detect normal
-    let verts_3d: &[f32] = &[0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0, 0.0];
+    let verts_3d: &[f64] = &[0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0, 0.0];
 
     let mut tess = Tessellator::new();
     tess.add_contour(3, verts_3d);
@@ -113,10 +113,10 @@ fn vertex_size_3_no_normal_auto_detect() {
 
 #[test]
 fn vertex_size_3_pentagon_xy_plane() {
-    use std::f32::consts::PI;
+    use std::f64::consts::PI;
     let mut pent = Vec::new();
     for i in 0..5 {
-        let angle = 2.0 * PI * i as f32 / 5.0 - PI / 2.0;
+        let angle = 2.0 * PI * i as f64 / 5.0 - PI / 2.0;
         pent.push(angle.cos());
         pent.push(angle.sin());
         pent.push(0.0); // z=0
@@ -136,8 +136,8 @@ fn vertex_size_3_pentagon_xy_plane() {
 #[test]
 fn vertex_size_2_and_3_same_element_count() {
     // Same quad, tessellated as 2D and 3D (with z=0), should produce same element count
-    let verts_2d: &[f32] = &[0.0, 0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 5.0];
-    let verts_3d: &[f32] = &[0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 5.0, 0.0];
+    let verts_2d: &[f64] = &[0.0, 0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 5.0];
+    let verts_3d: &[f64] = &[0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 5.0, 0.0];
 
     let mut tess2d = Tessellator::new();
     tess2d.add_contour(2, verts_2d);
@@ -158,7 +158,7 @@ fn vertex_size_2_and_3_same_element_count() {
 
 #[test]
 fn custom_normal_z_positive() {
-    let quad: &[f32] = &[0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
+    let quad: &[f64] = &[0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
     let mut tess = Tessellator::new();
     tess.add_contour(2, quad);
     let ok = tess.tessellate(
@@ -176,7 +176,7 @@ fn custom_normal_z_positive() {
 fn custom_normal_z_negative_reverses_winding() {
     // With normal [0,0,-1], the polygon should be interpreted as CW.
     // For Positive winding rule, this might produce different results.
-    let quad: &[f32] = &[0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
+    let quad: &[f64] = &[0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
 
     let mut tess_pos = Tessellator::new();
     tess_pos.add_contour(2, quad);

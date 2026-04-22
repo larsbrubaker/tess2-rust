@@ -5,11 +5,11 @@ mod helpers;
 
 use tess2_rust::{ElementType, TessOption, Tessellator, WindingRule};
 
-fn unit_quad() -> Vec<f32> {
+fn unit_quad() -> Vec<f64> {
     vec![0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]
 }
 
-fn polygon_with_hole() -> (Vec<f32>, Vec<f32>) {
+fn polygon_with_hole() -> (Vec<f64>, Vec<f64>) {
     let outer = vec![0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
     let inner = vec![3.0, 3.0, 7.0, 3.0, 7.0, 7.0, 3.0, 7.0];
     (outer, inner)
@@ -225,7 +225,7 @@ fn boundary_contours_can_be_re_tessellated() {
     for i in 0..boundary_count {
         let start = boundary_elems[i * 2] as usize;
         let count = boundary_elems[i * 2 + 1] as usize;
-        let contour: Vec<f32> = (start..start + count)
+        let contour: Vec<f64> = (start..start + count)
             .flat_map(|j| vec![boundary_verts[j * 2], boundary_verts[j * 2 + 1]])
             .collect();
         tess2.add_contour(2, &contour);
@@ -243,8 +243,8 @@ fn boundary_contours_can_be_re_tessellated() {
 #[test]
 fn boundary_contours_nested_squares() {
     let mut tess = Tessellator::new();
-    tess.add_contour(2, &[-5.0f32, -5.0, 5.0, -5.0, 5.0, 5.0, -5.0, 5.0]);
-    tess.add_contour(2, &[-2.0f32, -2.0, -2.0, 2.0, 2.0, 2.0, 2.0, -2.0]);
+    tess.add_contour(2, &[-5.0f64, -5.0, 5.0, -5.0, 5.0, 5.0, -5.0, 5.0]);
+    tess.add_contour(2, &[-2.0f64, -2.0, -2.0, 2.0, 2.0, 2.0, 2.0, -2.0]);
 
     let ok = tess.tessellate(WindingRule::Odd, ElementType::BoundaryContours, 0, 2, None);
     assert!(ok);

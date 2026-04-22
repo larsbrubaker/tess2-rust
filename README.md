@@ -20,7 +20,10 @@ Crate listing: **[tess2-rust on crates.io](https://crates.io/crates/tess2-rust)*
 - **Polygon Tessellation** — tessellate complex polygons into triangles, quads, or boundary contours
 - **Winding Rules** — five rules (Odd, NonZero, Positive, Negative, AbsGeqTwo) for flexible fill control
 - **Multiple Output Types** — triangles, connected polygons of configurable size, and boundary contours
+- **Edge Flags** — per-triangle-vertex `edge_flags()` output identifying original polygon boundary edges, for analytic edge anti-aliasing (halo strips) without hardware MSAA
+- **Double Precision** — coordinates and sweep predicates run in `f64` for rotation-stable topology on near-collinear geometry
 - **Self-Intersecting Polygons** — handles self-intersections, overlapping contours, and degenerate geometry
+- **C#/libtess2 Conformance** — 132/132 lion polygons match MatterCAD's agg-sharp `Tesselator` topologically (see `tests/conformance_vs_csharp.rs`)
 - **No Unsafe Code** — zero `unsafe` blocks in the entire codebase
 - **Zero Dependencies** — no external runtime dependencies
 - **WASM-Compatible** — compiles to WebAssembly for browser-based usage

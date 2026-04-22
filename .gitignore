@@ -8,3 +8,5 @@ bun.lockb
 Cargo.lock
 trace_output*.txt
 /cpp_reference/
+tools/LionReferenceGen/obj/
+tools/LionReferenceGen/bin/

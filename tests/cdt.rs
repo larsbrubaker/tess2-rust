@@ -5,7 +5,7 @@ mod helpers;
 
 use tess2_rust::{ElementType, TessOption, Tessellator, WindingRule};
 
-fn tessellate_with_cdt(vertices: &[f32], cdt: bool) -> Tessellator {
+fn tessellate_with_cdt(vertices: &[f64], cdt: bool) -> Tessellator {
     let mut tess = Tessellator::new();
     tess.set_option(TessOption::ConstrainedDelaunayTriangulation, cdt);
     tess.add_contour(2, vertices);
@@ -16,7 +16,7 @@ fn tessellate_with_cdt(vertices: &[f32], cdt: bool) -> Tessellator {
 
 #[test]
 fn cdt_quad_produces_valid_output() {
-    let quad = &[0.0f32, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
+    let quad = &[0.0f64, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
     let tess = tessellate_with_cdt(quad, true);
     assert_eq!(
         tess.element_count(),
@@ -28,7 +28,7 @@ fn cdt_quad_produces_valid_output() {
 
 #[test]
 fn cdt_triangle_produces_one_triangle() {
-    let tri = &[0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0];
+    let tri = &[0.0f64, 0.0, 1.0, 0.0, 0.0, 1.0];
     let tess = tessellate_with_cdt(tri, true);
     assert_eq!(tess.element_count(), 1);
     helpers::verify_valid_output(&tess);
@@ -36,7 +36,7 @@ fn cdt_triangle_produces_one_triangle() {
 
 #[test]
 fn cdt_preserves_area() {
-    let quad = &[0.0f32, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
+    let quad = &[0.0f64, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
     let tess_normal = tessellate_with_cdt(quad, false);
     let tess_cdt = tessellate_with_cdt(quad, true);
 
@@ -108,9 +108,9 @@ fn cdt_polygon_with_hole() {
     let mut tess = Tessellator::new();
     tess.set_option(TessOption::ConstrainedDelaunayTriangulation, true);
     tess.set_option(TessOption::ReverseContours, false);
-    tess.add_contour(2, &[0.0f32, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0]);
+    tess.add_contour(2, &[0.0f64, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0]);
     tess.set_option(TessOption::ReverseContours, true);
-    tess.add_contour(2, &[3.0f32, 3.0, 7.0, 3.0, 7.0, 7.0, 3.0, 7.0]);
+    tess.add_contour(2, &[3.0f64, 3.0, 7.0, 3.0, 7.0, 7.0, 3.0, 7.0]);
 
     let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
     assert!(ok, "CDT polygon with hole should succeed");
@@ -127,7 +127,7 @@ fn cdt_polygon_with_hole() {
 #[test]
 fn cdt_toggle_does_not_crash() {
     // Toggle CDT on/off between tessellations (reuse check).
-    let quad = &[0.0f32, 0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 5.0];
+    let quad = &[0.0f64, 0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 5.0];
 
     let mut tess = Tessellator::new();
     tess.set_option(TessOption::ConstrainedDelaunayTriangulation, true);

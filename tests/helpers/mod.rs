@@ -6,10 +6,10 @@
 use tess2_rust::{ElementType, Tessellator, WindingRule};
 
 /// Parse tess2.js `.dat` format: one vertex per line as `x y` or `x, y`.
-/// Blank lines separate contours. Returns a Vec of contours, each a flat f32 array.
-pub fn parse_contours(data: &str) -> Vec<Vec<f32>> {
-    let mut contours: Vec<Vec<f32>> = Vec::new();
-    let mut current: Vec<f32> = Vec::new();
+/// Blank lines separate contours. Returns a Vec of contours, each a flat f64 array.
+pub fn parse_contours(data: &str) -> Vec<Vec<f64>> {
+    let mut contours: Vec<Vec<f64>> = Vec::new();
+    let mut current: Vec<f64> = Vec::new();
 
     for line in data.lines() {
         let trimmed = line.trim();
@@ -19,10 +19,10 @@ pub fn parse_contours(data: &str) -> Vec<Vec<f32>> {
             }
             continue;
         }
-        let floats: Vec<f32> = trimmed
+        let floats: Vec<f64> = trimmed
             .split(|c: char| c == ',' || c.is_whitespace())
             .filter(|s| !s.is_empty())
-            .filter_map(|s| s.parse::<f32>().ok())
+            .filter_map(|s| s.parse::<f64>().ok())
             .collect();
         current.extend(floats);
     }
@@ -33,16 +33,16 @@ pub fn parse_contours(data: &str) -> Vec<Vec<f32>> {
 }
 
 /// Signed area of a triangle given 3 vertices (2D).
-pub fn triangle_area(x0: f32, y0: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
+pub fn triangle_area(x0: f64, y0: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     0.5 * ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0))
 }
 
 /// Compute total absolute area of all output triangles from a tessellation.
 /// Assumes element type is Polygons with poly_size=3.
-pub fn total_tessellation_area(tess: &Tessellator) -> f32 {
+pub fn total_tessellation_area(tess: &Tessellator) -> f64 {
     let verts = tess.vertices();
     let elems = tess.elements();
-    let mut total = 0.0f32;
+    let mut total = 0.0f64;
     for tri in elems.chunks(3) {
         if tri.len() < 3 {
             break;
@@ -60,10 +60,10 @@ pub fn total_tessellation_area(tess: &Tessellator) -> f32 {
 }
 
 /// Compute total signed area of all output triangles from a tessellation.
-pub fn total_tessellation_signed_area(tess: &Tessellator) -> f32 {
+pub fn total_tessellation_signed_area(tess: &Tessellator) -> f64 {
     let verts = tess.vertices();
     let elems = tess.elements();
-    let mut total = 0.0f32;
+    let mut total = 0.0f64;
     for tri in elems.chunks(3) {
         if tri.len() < 3 {
             break;
@@ -111,7 +111,7 @@ pub fn verify_valid_output(tess: &Tessellator) {
 
 /// Verify no degenerate (zero-area) triangles in output.
 /// Uses a small epsilon for floating-point tolerance.
-pub fn verify_no_degenerate_triangles(tess: &Tessellator, epsilon: f32) {
+pub fn verify_no_degenerate_triangles(tess: &Tessellator, epsilon: f64) {
     let verts = tess.vertices();
     let elems = tess.elements();
     for (i, tri) in elems.chunks(3).enumerate() {
@@ -144,7 +144,7 @@ pub fn verify_no_degenerate_triangles(tess: &Tessellator, epsilon: f32) {
 }
 
 /// Helper: tessellate contours with the given winding rule as triangles (poly_size=3, 2D).
-pub fn tessellate_contours(contours: &[Vec<f32>], winding_rule: WindingRule) -> Tessellator {
+pub fn tessellate_contours(contours: &[Vec<f64>], winding_rule: WindingRule) -> Tessellator {
     let mut tess = Tessellator::new();
     for contour in contours {
         tess.add_contour(2, contour);
@@ -159,12 +159,12 @@ pub fn tessellate_contours(contours: &[Vec<f32>], winding_rule: WindingRule) -> 
 }
 
 /// Compute the signed area of a simple polygon given as flat [x0,y0,x1,y1,...].
-pub fn polygon_signed_area(verts: &[f32]) -> f32 {
+pub fn polygon_signed_area(verts: &[f64]) -> f64 {
     let n = verts.len() / 2;
     if n < 3 {
         return 0.0;
     }
-    let mut area = 0.0f32;
+    let mut area = 0.0f64;
     for i in 0..n {
         let j = (i + 1) % n;
         area += verts[i * 2] * verts[j * 2 + 1];

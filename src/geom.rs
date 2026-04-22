@@ -7,7 +7,18 @@
 // These are exact translations of the C functions with identical floating-point
 // behavior to ensure mathematical equivalence with the original library.
 
-pub type Real = f32;
+/// Internal coordinate type used throughout the sweep and all geometric
+/// predicates.
+///
+/// Pinned to **`f64`** — matching the C# agg-sharp `Tesselator` reference and
+/// modern libtess2 builds that opt for double precision.  The sweep's
+/// stability hinges on edge-sign tests not flipping under small coordinate
+/// perturbations (e.g. rotating integer input to floating coordinates):
+/// `f32`'s ~7 decimal digits of precision is not enough to keep
+/// near-collinear predicates on the same side across rotations.  With `f64`
+/// the 15-digit margin absorbs the rounding noise and the topology stays
+/// rotation-invariant — which is the whole point of this library.
+pub type Real = f64;
 
 /// Returns true if u is lexicographically <= v (s first, then t).
 #[inline]
@@ -47,12 +58,33 @@ pub fn edge_eval(u_s: Real, u_t: Real, v_s: Real, v_t: Real, w_s: Real, w_t: Rea
     }
 }
 
-/// Returns a value whose sign matches edge_eval(u,v,w) but cheaper to compute.
-/// NOTE: In the C code, EdgeSign is #defined to call tesedgeEval (same as EdgeEval)
-/// to fix a numerical accuracy issue with nearly-zero x coordinates.
+/// Returns a value whose **sign** matches `edge_eval(u,v,w)`, computed with a
+/// cheaper division-free cross-product formula.
+///
+/// Direct port of libtess2's `tesedgeSign` (`geom.c`).  The point of having
+/// this as a separate routine from `edge_eval` is numerical stability: the
+/// division inside `edge_eval` (`gap_l / (gap_l + gap_r)`) rounds slightly
+/// differently depending on floating-point representation, which flips the
+/// sign on nearly-collinear inputs.  Rotating a polygon changes coordinate
+/// representations just enough for that flipping to give DIFFERENT
+/// topological decisions during the sweep — the classic robustness failure
+/// libtess2 was written to avoid.
+///
+/// The cross-product formula below preserves the same sign as
+/// `edge_eval(u,v,w)` (they differ only by a positive scalar `gap_l+gap_r`),
+/// but avoids division entirely, so its sign is stable under the small
+/// coordinate perturbations that rotations introduce.
 #[inline]
 pub fn edge_sign(u_s: Real, u_t: Real, v_s: Real, v_t: Real, w_s: Real, w_t: Real) -> Real {
-    edge_eval(u_s, u_t, v_s, v_t, w_s, w_t)
+    // debug_assert!(vert_leq(u_s, u_t, v_s, v_t) && vert_leq(v_s, v_t, w_s, w_t));
+    let gap_l = v_s - u_s;
+    let gap_r = w_s - v_s;
+    if gap_l + gap_r > 0.0 {
+        (v_t - w_t) * gap_l + (v_t - u_t) * gap_r
+    } else {
+        // Vertical line uvw — collinear on s axis, sign ambiguous.
+        0.0
+    }
 }
 
 /// Like edge_eval but with s and t transposed.

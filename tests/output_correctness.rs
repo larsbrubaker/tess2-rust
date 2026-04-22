@@ -5,7 +5,7 @@ mod helpers;
 
 use tess2_rust::{ElementType, TessOption, Tessellator, WindingRule};
 
-fn tessellate_simple(vertices: &[f32]) -> Tessellator {
+fn tessellate_simple(vertices: &[f64]) -> Tessellator {
     let mut tess = Tessellator::new();
     tess.add_contour(2, vertices);
     let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
@@ -53,9 +53,9 @@ fn area_polygon_with_hole() {
     // Use the same pattern as the C++ test: 3x3 outer, 1x1 inner hole
     let mut tess = Tessellator::new();
     tess.set_option(TessOption::ReverseContours, false);
-    tess.add_contour(2, &[0.0f32, 0.0, 3.0, 0.0, 3.0, 3.0, 0.0, 3.0]);
+    tess.add_contour(2, &[0.0f64, 0.0, 3.0, 0.0, 3.0, 3.0, 0.0, 3.0]);
     tess.set_option(TessOption::ReverseContours, true);
-    tess.add_contour(2, &[1.0f32, 1.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0]);
+    tess.add_contour(2, &[1.0f64, 1.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0]);
 
     let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
     assert!(ok);
@@ -72,17 +72,17 @@ fn area_polygon_with_hole() {
 
 #[test]
 fn area_regular_hexagon() {
-    use std::f32::consts::PI;
+    use std::f64::consts::PI;
     let mut hex = Vec::new();
     for i in 0..6 {
-        let angle = PI / 3.0 * i as f32;
+        let angle = PI / 3.0 * i as f64;
         hex.push(angle.cos());
         hex.push(angle.sin());
     }
     let tess = tessellate_simple(&hex);
     let area = helpers::total_tessellation_area(&tess);
     // Regular hexagon with circumradius 1 has area = 3*sqrt(3)/2 ≈ 2.598
-    let expected = 3.0 * 3.0f32.sqrt() / 2.0;
+    let expected = 3.0 * 3.0f64.sqrt() / 2.0;
     assert!(
         (area - expected).abs() < 0.01,
         "hexagon area should be ~{}, got {}",
@@ -131,10 +131,10 @@ fn no_degenerate_triangles_square() {
 
 #[test]
 fn no_degenerate_triangles_pentagon() {
-    use std::f32::consts::PI;
+    use std::f64::consts::PI;
     let mut pent = Vec::new();
     for i in 0..5 {
-        let angle = 2.0 * PI * i as f32 / 5.0 - PI / 2.0;
+        let angle = 2.0 * PI * i as f64 / 5.0 - PI / 2.0;
         pent.push(100.0 * angle.cos());
         pent.push(100.0 * angle.sin());
     }
@@ -146,7 +146,7 @@ fn no_degenerate_triangles_pentagon() {
 
 #[test]
 fn output_vertices_within_input_bounds() {
-    let input = &[10.0f32, 20.0, 50.0, 20.0, 50.0, 80.0, 10.0, 80.0];
+    let input = &[10.0f64, 20.0, 50.0, 20.0, 50.0, 80.0, 10.0, 80.0];
     let tess = tessellate_simple(input);
     let verts = tess.vertices();
 
@@ -211,8 +211,8 @@ fn vertex_indices_mapping() {
 fn area_two_separate_triangles() {
     let mut tess = Tessellator::new();
     // Two non-overlapping triangles
-    tess.add_contour(2, &[0.0f32, 0.0, 1.0, 0.0, 0.5, 1.0]);
-    tess.add_contour(2, &[5.0f32, 5.0, 6.0, 5.0, 5.5, 6.0]);
+    tess.add_contour(2, &[0.0f64, 0.0, 1.0, 0.0, 0.5, 1.0]);
+    tess.add_contour(2, &[5.0f64, 5.0, 6.0, 5.0, 5.5, 6.0]);
     let ok = tess.tessellate(WindingRule::Positive, ElementType::Polygons, 3, 2, None);
     assert!(ok);
 
