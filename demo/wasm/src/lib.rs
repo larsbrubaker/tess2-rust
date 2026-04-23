@@ -29,7 +29,8 @@ impl TessellatorJs {
 
     /// Add a contour from a flat [x0,y0, x1,y1, ...] Float32Array.
     pub fn add_contour(&mut self, vertices: &[f32]) {
-        self.inner.add_contour(2, vertices);
+        let v: Vec<f64> = vertices.iter().map(|&x| x as f64).collect();
+        self.inner.add_contour(2, &v);
     }
 
     /// Set an option (0 = ConstrainedDelaunay, 1 = ReverseContours).
@@ -78,7 +79,7 @@ impl TessellatorJs {
 
     /// Flat vertex positions [x0,y0, x1,y1, ...] for the output mesh.
     pub fn get_vertices(&self) -> Vec<f32> {
-        self.inner.vertices().to_vec()
+        self.inner.vertices().iter().map(|&x| x as f32).collect()
     }
 }
 
