@@ -590,6 +590,24 @@ impl Mesh {
 
     /// tessMeshDelete: remove edge eDel.
     pub fn delete_edge(&mut self, e_del: EdgeIdx) -> bool {
+        // Algorithmic invariant: the sweep must drop the edge from any
+        // active region (`delete_region` / `fix_upper_edge`) before
+        // calling this — otherwise the region keeps a reference to a
+        // dead half-edge and the next sweep step indexes
+        // `mesh.verts[INVALID]` in `walk_dirty_regions` /
+        // `check_for_right_splice`.  We treat this as a bug at the
+        // call site and surface it with a clear message in debug
+        // builds; release builds skip the check (active_region is
+        // implementation detail).
+        debug_assert!(
+            self.edges[e_del as usize].active_region == INVALID
+                && self.edges[(e_del ^ 1) as usize].active_region == INVALID,
+            "delete_edge({}) called while edge is still bound to active_region(s) up={} sym={} \
+             — caller must run delete_region first",
+            e_del,
+            self.edges[e_del as usize].active_region,
+            self.edges[(e_del ^ 1) as usize].active_region,
+        );
         let e_del_sym = e_del ^ 1;
 
         let e_del_lface = self.edges[e_del as usize].lface;

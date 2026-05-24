@@ -7,10 +7,13 @@
 // The C code is split across tess.c and sweep.c; they're merged here since both
 // share the same internal state (TESStesselator).
 
+mod api;
 mod geometry;
 mod output;
 #[cfg(test)]
 mod tests;
+
+pub use api::TessellatorApi;
 
 use geometry::{
     check_orientation, compute_intersect_coords, compute_normal, dot, is_valid_coord, long_axis,
@@ -917,7 +920,23 @@ impl Tessellator {
         }
         self.region_mut(reg_new).node_up = new_node_idx;
 
-        // Link the edge to the region
+        // Link the edge to the region.  Defensive invariant check
+        // (debug-only): the SYM of the edge we're about to bind must
+        // not already be the e_up of another active region.  If it is,
+        // we'd end up with both halves of the same edge pair owned by
+        // two regions, which the degenerate-2-edge-loop branch in
+        // `walk_dirty_regions` then collapses by `delete_edge`-ing the
+        // pair from under the OTHER region — exactly the chain we saw
+        // surface in wasm as `mesh.verts[INVALID]` in
+        // `check_for_right_splice`.
+        debug_assert_eq!(
+            self.mesh.as_ref().unwrap().edges[(e_new_up ^ 1) as usize].active_region,
+            INVALID,
+            "add_region_below({}): sym {} already bound to active region {}",
+            e_new_up,
+            e_new_up ^ 1,
+            self.mesh.as_ref().unwrap().edges[(e_new_up ^ 1) as usize].active_region,
+        );
         self.mesh.as_mut().unwrap().edges[e_new_up as usize].active_region = reg_new;
 
         self.compute_winding(reg_new);
@@ -941,7 +960,18 @@ impl Tessellator {
     fn fix_upper_edge(&mut self, reg: RegionIdx, new_edge: EdgeIdx) -> bool {
         let old_edge = self.region(reg).e_up;
         if old_edge != INVALID {
-            if !self.mesh.as_mut().unwrap().delete_edge(old_edge) {
+            // Sever the back-pointer from the old half-edge pair to
+            // `reg` BEFORE handing it to `delete_edge`.  In libtess2's
+            // C original this isn't necessary because the edge's
+            // memory is freed and the dangling pointer can never be
+            // dereferenced; our `Vec`-backed mesh keeps the slot
+            // alive, so a stale `active_region` field would cause the
+            // sweep's invariant-validator (`delete_edge`'s
+            // `debug_assert!`) to flag a false leak here.
+            let mesh = self.mesh.as_mut().unwrap();
+            mesh.edges[old_edge as usize].active_region = INVALID;
+            mesh.edges[(old_edge ^ 1) as usize].active_region = INVALID;
+            if !mesh.delete_edge(old_edge) {
                 return false;
             }
         }
@@ -1177,14 +1207,46 @@ impl Tessellator {
         e_top_left: EdgeIdx,
         clean_up: bool,
     ) {
-        // Insert right-going edges into the dictionary.
-        // Guard: the onext ring must contain e_last; if it doesn't
-        // (degenerate mesh), break early rather than looping forever.
+        // Insert right-going edges into the dictionary.  Guard: the
+        // onext ring must contain e_last; if it doesn't (degenerate
+        // mesh), break early rather than looping forever.  libtess2's
+        // C original asserts `VertLeq(e->Org, e->Dst)` — i.e., `e` is
+        // right-going from the event vertex — and our previous Rust
+        // port silently accepted any orientation, so a degenerate
+        // input could push an edge whose SYM was already an active
+        // region's `e_up` into the ring.  `add_region_below` then
+        // bound both halves of the same edge pair to two different
+        // regions; `walk_dirty_regions`'s degenerate-2-edge-loop
+        // branch later `delete_edge`d the pair from under one of
+        // them, leaving its e_up dangling and producing the wasm-only
+        // `mesh.verts[INVALID]` panic in `check_for_right_splice` /
+        // `walk_dirty_regions`.  See `tests/wasm_glyph_repro.rs`.
         let max_edge_iters = self.mesh.as_ref().unwrap().edges.len() + 2;
         let mut e = e_first;
         let mut edge_iter = 0usize;
         loop {
-            self.add_region_below(reg_up, e ^ 1);
+            // Right-going invariant + duplicate-pair guard.  Either
+            // condition means the edge isn't a fresh right-going
+            // edge of the event vertex and must be skipped.
+            let skip = {
+                let mesh = self.mesh.as_ref().unwrap();
+                let org = mesh.edges[e as usize].org;
+                let dst = mesh.dst(e);
+                let not_right_going = org != INVALID
+                    && dst != INVALID
+                    && !vert_leq(
+                        mesh.verts[org as usize].s,
+                        mesh.verts[org as usize].t,
+                        mesh.verts[dst as usize].s,
+                        mesh.verts[dst as usize].t,
+                    );
+                let sym_already_bound =
+                    mesh.edges[(e ^ 1) as usize].active_region != INVALID;
+                not_right_going || sym_already_bound
+            };
+            if !skip {
+                self.add_region_below(reg_up, e ^ 1);
+            }
             e = self.mesh.as_ref().unwrap().edges[e as usize].onext;
             if e == e_last {
                 break;
@@ -2329,62 +2391,3 @@ impl Tessellator {
 
 }
 
-// ────────────────────────── Public wrapper ────────────────────────────────────
-
-/// High-level tessellator (public interface).
-pub struct TessellatorApi {
-    inner: Tessellator,
-}
-
-impl TessellatorApi {
-    pub fn new() -> Self {
-        TessellatorApi {
-            inner: Tessellator::new(),
-        }
-    }
-    pub fn set_option(&mut self, option: TessOption, value: bool) {
-        self.inner.set_option(option, value);
-    }
-    pub fn add_contour(&mut self, size: usize, vertices: &[Real]) {
-        self.inner.add_contour(size, vertices);
-    }
-    pub fn tessellate(
-        &mut self,
-        winding_rule: WindingRule,
-        element_type: ElementType,
-        poly_size: usize,
-        vertex_size: usize,
-        normal: Option<[Real; 3]>,
-    ) -> bool {
-        self.inner
-            .tessellate(winding_rule, element_type, poly_size, vertex_size, normal)
-    }
-    pub fn vertex_count(&self) -> usize {
-        self.inner.vertex_count()
-    }
-    pub fn element_count(&self) -> usize {
-        self.inner.element_count()
-    }
-    pub fn vertices(&self) -> &[Real] {
-        self.inner.vertices()
-    }
-    pub fn vertex_indices(&self) -> &[u32] {
-        self.inner.vertex_indices()
-    }
-    pub fn elements(&self) -> &[u32] {
-        self.inner.elements()
-    }
-    /// Per triangle-vertex edge flags — see [`Tessellator::out_edge_flags`].
-    pub fn edge_flags(&self) -> &[u8] {
-        self.inner.edge_flags()
-    }
-    pub fn status(&self) -> TessStatus {
-        self.inner.get_status()
-    }
-}
-
-impl Default for TessellatorApi {
-    fn default() -> Self {
-        Self::new()
-    }
-}
