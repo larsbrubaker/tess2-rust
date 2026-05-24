@@ -411,45 +411,61 @@ impl Mesh {
     }
 
     /// Kill (remove) a vertex from the global vertex list and update its edges to point to `new_org`.
+    ///
+    /// Defensive against `v_del == INVALID` and out-of-bounds:
+    /// callers reach this through edge `org` fields, which can be
+    /// `INVALID` after a partially-built mesh hits a degenerate region.
+    /// Forwarding the panic instead of returning made `wasm32` builds
+    /// crash with `index out of bounds: the len is N but the index is
+    /// 4294967295` on real-world tessellation inputs.
     fn kill_vertex(&mut self, v_del: VertIdx, new_org: VertIdx) {
-        // Re-point all edges in the vertex ring
+        if v_del == INVALID || (v_del as usize) >= self.verts.len() {
+            return;
+        }
         let e_start = self.verts[v_del as usize].an_edge;
-        if e_start != INVALID {
+        if e_start != INVALID && (e_start as usize) < self.edges.len() {
             let mut e = e_start;
             loop {
                 self.edges[e as usize].org = new_org;
                 e = self.edges[e as usize].onext;
-                if e == e_start {
+                if e == INVALID || (e as usize) >= self.edges.len() || e == e_start {
                     break;
                 }
             }
         }
 
-        // Remove from doubly-linked vertex list
         let v_prev = self.verts[v_del as usize].prev;
         let v_next = self.verts[v_del as usize].next;
-        if v_prev != INVALID && v_prev < self.verts.len() as u32 {
+        if v_prev != INVALID && (v_prev as usize) < self.verts.len() {
             self.verts[v_prev as usize].next = v_next;
         }
-        if v_next != INVALID && v_next < self.verts.len() as u32 {
+        if v_next != INVALID && (v_next as usize) < self.verts.len() {
             self.verts[v_next as usize].prev = v_prev;
         }
 
-        // Mark as deleted (we don't actually reclaim the Vec slot)
         self.verts[v_del as usize].next = INVALID;
         self.verts[v_del as usize].prev = INVALID;
         self.verts[v_del as usize].an_edge = INVALID;
     }
 
     /// Kill (remove) a face from the global face list and update its edges to point to `new_lface`.
+    ///
+    /// Defensive against `f_del == INVALID` and out-of-bounds: see
+    /// [`Self::kill_vertex`] — `connect` can legitimately pass an
+    /// invalid `e_dst_lface` when only one side of the new edge has a
+    /// real face, and the original direct index panicked the wasm
+    /// build at `mesh/mod.rs:446: index out of bounds`.
     fn kill_face(&mut self, f_del: FaceIdx, new_lface: FaceIdx) {
+        if f_del == INVALID || (f_del as usize) >= self.faces.len() {
+            return;
+        }
         let e_start = self.faces[f_del as usize].an_edge;
-        if e_start != INVALID {
+        if e_start != INVALID && (e_start as usize) < self.edges.len() {
             let mut e = e_start;
             loop {
                 self.edges[e as usize].lface = new_lface;
                 e = self.edges[e as usize].lnext;
-                if e == e_start {
+                if e == INVALID || (e as usize) >= self.edges.len() || e == e_start {
                     break;
                 }
             }
@@ -457,10 +473,10 @@ impl Mesh {
 
         let f_prev = self.faces[f_del as usize].prev;
         let f_next = self.faces[f_del as usize].next;
-        if f_prev != INVALID && f_prev < self.faces.len() as u32 {
+        if f_prev != INVALID && (f_prev as usize) < self.faces.len() {
             self.faces[f_prev as usize].next = f_next;
         }
-        if f_next != INVALID && f_next < self.faces.len() as u32 {
+        if f_next != INVALID && (f_next as usize) < self.faces.len() {
             self.faces[f_next as usize].prev = f_prev;
         }
 
@@ -470,12 +486,21 @@ impl Mesh {
     }
 
     /// Kill (remove) an edge pair from the global edge list.
+    ///
+    /// Defensive against `e_del == INVALID` and out-of-bounds — same
+    /// reasoning as the sibling `kill_vertex`/`kill_face` guards.
     fn kill_edge(&mut self, e_del: EdgeIdx) {
+        if e_del == INVALID {
+            return;
+        }
         let e_del = if e_del & 1 != 0 { e_del ^ 1 } else { e_del };
+        let nlen = self.edges.len() as u32;
+        if e_del >= nlen || (e_del ^ 1) >= nlen {
+            return;
+        }
         let e_next = self.edges[e_del as usize].next;
         let e_prev = self.edges[(e_del ^ 1) as usize].next;
 
-        let nlen = self.edges.len() as u32;
         if e_next != INVALID && (e_next ^ 1) < nlen {
             self.edges[(e_next ^ 1) as usize].next = e_prev;
         }
@@ -483,7 +508,6 @@ impl Mesh {
             self.edges[(e_prev ^ 1) as usize].next = e_next;
         }
 
-        // Mark edge as deleted
         self.edges[e_del as usize].next = INVALID;
         self.edges[(e_del ^ 1) as usize].next = INVALID;
     }
@@ -720,7 +744,13 @@ impl Mesh {
     /// All edges of fZap get lface = INVALID. Edges whose rface is also INVALID
     /// are deleted entirely.
     pub fn zap_face(&mut self, f_zap: FaceIdx) {
+        if f_zap == INVALID || (f_zap as usize) >= self.faces.len() {
+            return;
+        }
         let e_start = self.faces[f_zap as usize].an_edge;
+        if e_start == INVALID || (e_start as usize) >= self.edges.len() {
+            return;
+        }
         let mut e_next = self.edges[e_start as usize].lnext;
 
         loop {
@@ -771,11 +801,14 @@ impl Mesh {
             }
         }
 
-        // Delete from face list
         let f_prev = self.faces[f_zap as usize].prev;
         let f_next = self.faces[f_zap as usize].next;
-        self.faces[f_prev as usize].next = f_next;
-        self.faces[f_next as usize].prev = f_prev;
+        if f_prev != INVALID && (f_prev as usize) < self.faces.len() {
+            self.faces[f_prev as usize].next = f_next;
+        }
+        if f_next != INVALID && (f_next as usize) < self.faces.len() {
+            self.faces[f_next as usize].prev = f_prev;
+        }
         self.faces[f_zap as usize].next = INVALID;
         self.faces[f_zap as usize].prev = INVALID;
         self.faces[f_zap as usize].an_edge = INVALID;
@@ -1007,5 +1040,25 @@ mod tests {
         assert_ne!(first, V_HEAD);
         let second = mesh.verts[first as usize].next;
         assert_ne!(second, INVALID);
+    }
+
+    /// Regression: `kill_face`, `kill_vertex`, and `kill_edge` used to
+    /// index `self.faces[INVALID as usize]` directly, panicking the
+    /// wasm32 build with `index out of bounds: the len is N but the
+    /// index is 4294967295` when `connect()` joined a real face to an
+    /// `INVALID` neighbour.  These now early-return for `INVALID` /
+    /// out-of-range targets so partially-built meshes degrade
+    /// gracefully instead of crashing the host.
+    #[test]
+    fn kill_helpers_tolerate_invalid_index() {
+        let mut mesh = Mesh::new();
+        mesh.kill_vertex(INVALID, INVALID);
+        mesh.kill_face(INVALID, INVALID);
+        mesh.kill_edge(INVALID);
+        mesh.kill_vertex(u32::MAX - 1, INVALID);
+        mesh.kill_face(u32::MAX - 1, INVALID);
+        mesh.kill_edge(u32::MAX - 1);
+        mesh.zap_face(INVALID);
+        mesh.zap_face(u32::MAX - 1);
     }
 }
