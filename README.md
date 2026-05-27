@@ -4,7 +4,6 @@
 [![docs.rs](https://docs.rs/tess2-rust/badge.svg)](https://docs.rs/tess2-rust)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://larsbrubaker.github.io/tess2-rust/)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/larsbrubaker)
 
 A pure Rust port of [libtess2](https://github.com/memononen/libtess2) — the SGI tessellation library refactored by Mikko Mononen. This is an exact mathematical 1-to-1 port of the C library, preserving all algorithmic behavior including edge cases. Zero external dependencies. No unsafe code. WASM-compatible.
 
@@ -91,6 +90,19 @@ bun run dev
 ```
 
 Then open `http://localhost:3000` in your browser.
+
+## Support the Project
+
+<a href="https://buymeacoffee.com/larsbrubaker"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50" width="210"></a>
+
+tess2-rust is open-source and free to use, maintained in spare time as a labor of love.
+
+If you find it useful, here are a few ways to help keep development going:
+
+- **Donations:** [Buy Me a Coffee](https://buymeacoffee.com/larsbrubaker) — every coffee helps.
+- **Star the repo:** Costs nothing and helps others find the project.
+- **Report issues:** [Open an issue](https://github.com/larsbrubaker/tess2-rust/issues) for bugs or feature ideas.
+- **Contribute:** PRs welcome — open an issue first to discuss larger changes.
 
 ## License
 
