@@ -95,7 +95,7 @@ Then open `http://localhost:3000` in your browser.
 
 <a href="https://buymeacoffee.com/larsbrubaker"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50" width="210"></a>
 
-tess2-rust is open-source and free to use, maintained in spare time as a labor of love.
+tess2-rust is open-source and free to use, maintained in spare time as a labor of love. Friends James Smith and Dan Ruskin help out from time to time too.
 
 If you find it useful, here are a few ways to help keep development going:
 
