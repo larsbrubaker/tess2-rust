@@ -4,6 +4,7 @@
 [![docs.rs](https://docs.rs/tess2-rust/badge.svg)](https://docs.rs/tess2-rust)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://larsbrubaker.github.io/tess2-rust/)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/larsbrubaker)
 
 A pure Rust port of [libtess2](https://github.com/memononen/libtess2) — the SGI tessellation library refactored by Mikko Mononen. This is an exact mathematical 1-to-1 port of the C library, preserving all algorithmic behavior including edge cases. Zero external dependencies. No unsafe code. WASM-compatible.
 
