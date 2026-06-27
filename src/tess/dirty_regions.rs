@@ -273,10 +273,13 @@ impl Tessellator {
                     return false;
                 }
                 let rb = self.region_below(reg_up2);
-                let rb_e = self.region(rb).e_up;
-                let rl2 = self.region_below(rb);
-                self.finish_left_regions(self.region_below(reg_up2), reg_lo);
+                // Capture the boundary EDGE now — `finish_left_regions` below
+                // frees `rb` (it's the first region it finishes), so re-reading
+                // `region(rb)` afterward dereferences a freed (`None`) slot.
+                // libtess2 saves `eUp = RegionBelow(regUp)->eUp` before
+                // `FinishLeftRegions` for exactly this reason (sweep.c).
                 let e_up_new = self.region(rb).e_up;
+                self.finish_left_regions(self.region_below(reg_up2), reg_lo);
                 let e_oprev = self.mesh.as_ref().unwrap().oprev(e_up_new);
                 self.add_right_edges(reg_up2, e_oprev, e_up_new, e_up_new, true);
                 return true;
