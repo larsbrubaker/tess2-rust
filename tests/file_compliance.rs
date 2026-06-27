@@ -9,7 +9,9 @@ fn explicit_file_limits() -> HashMap<&'static str, usize> {
     // Limits should only ever decrease as files are refactored.
     // Remove an entry when the file reaches 800 lines or less.
     let mut limits = HashMap::new();
-    limits.insert("src\\tess\\mod.rs", 2200);
+    // `src\tess\mod.rs` was split into focused submodules (priority_queue,
+    // region, sweep, dirty_regions, connect) and now lives under the 800-line
+    // default — its frozen entry is intentionally gone.
     limits.insert("src\\mesh\\mod.rs", 967);
     limits
 }

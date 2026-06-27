@@ -10,3 +10,4 @@ trace_output*.txt
 /cpp_reference/
 tools/LionReferenceGen/obj/
 tools/LionReferenceGen/bin/
+cpp-reference/
