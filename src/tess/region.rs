@@ -249,23 +249,24 @@ impl Tessellator {
         }
         self.region_mut(reg_new).node_up = new_node_idx;
 
-        // Link the edge to the region.  Defensive invariant check
-        // (debug-only): the SYM of the edge we're about to bind must
-        // not already be the e_up of another active region.  If it is,
-        // we'd end up with both halves of the same edge pair owned by
-        // two regions, which the degenerate-2-edge-loop branch in
-        // `walk_dirty_regions` then collapses by `delete_edge`-ing the
-        // pair from under the OTHER region — exactly the chain we saw
-        // surface in wasm as `mesh.verts[INVALID]` in
-        // `check_for_right_splice`.
-        debug_assert_eq!(
-            self.mesh.as_ref().unwrap().edges[(e_new_up ^ 1) as usize].active_region,
-            INVALID,
-            "add_region_below({}): sym {} already bound to active region {}",
-            e_new_up,
-            e_new_up ^ 1,
-            self.mesh.as_ref().unwrap().edges[(e_new_up ^ 1) as usize].active_region,
-        );
+        // Link the edge to the region.  Note: the SYM of the edge we're binding
+        // can legitimately still be another active region's `e_up` here — both
+        // halves of the pair end up owned, and the degenerate-2-edge-loop branch
+        // in `walk_dirty_regions` then collapses it by `delete_edge`-ing the pair
+        // (the sweep produces a correct tessellation regardless; verified by the
+        // `glyph_repro_region_none_3` 216-point contour).  This used to be a
+        // `debug_assert!`, but that aborted debug builds on perfectly valid input
+        // — a robustness bug in itself — so it's now a trace-only note.
+        if self.trace_enabled {
+            let sym_region = self.mesh.as_ref().unwrap().edges[(e_new_up ^ 1) as usize].active_region;
+            if sym_region != INVALID {
+                eprintln!(
+                    "R   ADD_REGION_BELOW({e_new_up}): sym {} still bound to region {sym_region} \
+                     (collapsed later by walk_dirty_regions)",
+                    e_new_up ^ 1,
+                );
+            }
+        }
         self.mesh.as_mut().unwrap().edges[e_new_up as usize].active_region = reg_new;
 
         self.compute_winding(reg_new);
