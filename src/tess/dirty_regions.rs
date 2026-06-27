@@ -49,6 +49,19 @@ impl Tessellator {
         );
         drop(mesh);
 
+        if self.trace_enabled {
+            let vleq = vert_leq(euo_s, euo_t, elo_s, elo_t);
+            let es = if vleq {
+                edge_sign(eld_s, eld_t, euo_s, euo_t, elo_s, elo_t)
+            } else {
+                edge_sign(eud_s, eud_t, elo_s, elo_t, euo_s, euo_t)
+            };
+            eprintln!(
+                "R   CFRS euo=({euo_s:.17e},{euo_t:.17e}) elo=({elo_s:.17e},{elo_t:.17e}) eld=({eld_s:.17e},{eld_t:.17e}) eud=({eud_s:.17e},{eud_t:.17e}) vleq={} es={es:.17e}",
+                vleq as i32,
+            );
+        }
+
         if vert_leq(euo_s, euo_t, elo_s, elo_t) {
             if edge_sign(eld_s, eld_t, euo_s, euo_t, elo_s, elo_t) > 0.0 {
                 return false;

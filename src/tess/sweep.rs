@@ -23,7 +23,7 @@ impl Tessellator {
             if reg == INVALID {
                 break;
             }
-            let e = self.region(reg).e_up;
+            let mut e = self.region(reg).e_up;
 
             let e_org = if e != INVALID {
                 self.mesh.as_ref().unwrap().edges[e as usize].org
@@ -56,6 +56,11 @@ impl Tessellator {
                     if !self.fix_upper_edge(reg, ne) {
                         return INVALID;
                     }
+                    // C: `e = tessMeshConnect(...)` — the relink splice below must
+                    // operate on the newly connected edge, not the old `e`.  Not
+                    // reassigning here spliced the wrong edge, corrupting the mesh
+                    // topology (found by differential test vs. the C reference).
+                    e = ne;
                 }
             }
 
@@ -197,10 +202,17 @@ impl Tessellator {
             let inside = self.is_winding_inside(new_winding);
             self.region_mut(reg).winding_number = new_winding;
             self.region_mut(reg).inside = inside;
+            if self.trace_enabled {
+                eprintln!("R   ARE winding={new_winding} inside={}", inside as i32);
+            }
 
             self.region_mut(reg_prev).dirty = true;
             if !first_time {
-                if self.check_for_right_splice(reg_prev) {
+                let cfrs = self.check_for_right_splice(reg_prev);
+                if self.trace_enabled {
+                    eprintln!("R   ARE_CFRS={}", cfrs as i32);
+                }
+                if cfrs {
                     // AddWinding
                     let re = self.region(reg).e_up;
                     let rep = self.region(reg_prev).e_up;
