@@ -30,7 +30,6 @@ impl Tessellator {
             vert_coords.push((mesh.verts[v as usize].s, mesh.verts[v as usize].t, v));
             v = mesh.verts[v as usize].next;
         }
-        drop(mesh);
 
         vert_coords.sort_unstable_by(|a, b| {
             if vert_leq(a.0, a.1, b.0, b.1) {

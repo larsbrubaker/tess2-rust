@@ -291,7 +291,7 @@ impl Tessellator {
         }
         let mut e_top_right = reg_e_up ^ 1;
         let mut e_top_left  = self.mesh.as_ref().unwrap().edges[e_top_right as usize].onext;
-        let mut e_last      = e_top_left;
+        let e_last      = e_top_left;
         // Temp fixable-edge cleanup — matches C#.
         if self.region(reg).fix_upper_edge {
             if e_top_left != e_top_right {
@@ -456,31 +456,5 @@ impl Tessellator {
             }
             self.add_right_edges(reg_up, an_edge, an_edge, INVALID, true);
         }
-    }
-
-    /// Dict search: finds the first region where edge_leq(tmp_reg, region) == true.
-    /// `tmp_e_up` is the e_up of a temporary region used for comparison.
-    /// Returns the matching region index.
-    pub(super) fn dict_search_by_edge(&mut self, tmp_e_up: EdgeIdx) -> RegionIdx {
-        // Temporarily allocate a region with tmp_e_up for comparison
-        let tmp_reg = self.alloc_region();
-        self.region_mut(tmp_reg).e_up = tmp_e_up;
-
-        // Walk forward from head looking for the first node where edge_leq(tmp_reg, node_key)
-        let mut node = self.dict.succ(DICT_HEAD);
-        let result = loop {
-            let key = self.dict.key(node);
-            if key == INVALID {
-                // Hit head (wrapped around) - not found
-                break INVALID;
-            }
-            if self.edge_leq(tmp_reg, key) {
-                break key;
-            }
-            node = self.dict.succ(node);
-        };
-
-        self.free_region(tmp_reg);
-        result
     }
 }

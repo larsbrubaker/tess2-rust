@@ -217,8 +217,6 @@ impl Tessellator {
                     let re = self.region(reg).e_up;
                     let rep = self.region(reg_prev).e_up;
                     if re != INVALID && rep != INVALID {
-                        let w1 = self.mesh.as_ref().unwrap().edges[re as usize].winding;
-                        let w2 = self.mesh.as_ref().unwrap().edges[(re ^ 1) as usize].winding;
                         let wp1 = self.mesh.as_ref().unwrap().edges[rep as usize].winding;
                         let wp2 = self.mesh.as_ref().unwrap().edges[(rep ^ 1) as usize].winding;
                         self.mesh.as_mut().unwrap().edges[re as usize].winding += wp1;

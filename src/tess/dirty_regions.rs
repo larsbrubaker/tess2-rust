@@ -47,7 +47,6 @@ impl Tessellator {
             mesh.verts[e_up_dst as usize].s,
             mesh.verts[e_up_dst as usize].t,
         );
-        drop(mesh);
 
         if self.trace_enabled {
             let vleq = vert_leq(euo_s, euo_t, elo_s, elo_t);
@@ -137,7 +136,6 @@ impl Tessellator {
             mesh.verts[e_lo_org as usize].s,
             mesh.verts[e_lo_org as usize].t,
         );
-        drop(mesh);
 
         if vert_leq(eud_s, eud_t, eld_s, eld_t) {
             if edge_sign(eud_s, eud_t, eld_s, eld_t, euo_s, euo_t) < 0.0 {
@@ -223,7 +221,6 @@ impl Tessellator {
         let dl_coords = mesh.verts[dst_lo as usize].coords;
         let ev_s = self.event_s;
         let ev_t = self.event_t;
-        drop(mesh);
 
         // Quick rejection tests
         let t_min_up = ou_t.min(du_t);
