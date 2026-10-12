@@ -1,0 +1,24 @@
+# Publishes tess2-rust to crates.io from GitHub's network.
+#
+# Same route as agg-rust's and agg-gui's publish workflows: publishing from CI keeps the token off
+# the development machine.
+#
+# Requires the repository secret CARGO_REGISTRY_TOKEN (a crates.io token with the
+# publish-update scope for tess2-rust). Bump `version` in Cargo.toml before running it.
+name: publish
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo test
+        run: cargo test --release
+      - name: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish
