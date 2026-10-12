@@ -10,4 +10,7 @@ pub mod priorityq;
 pub mod sweep;
 pub mod tess;
 
-pub use tess::{ElementType, TessOption, TessStatus, Tessellator, TessellatorApi, WindingRule};
+pub use tess::{
+    ElementType, RenderIndex, RenderOrder, TessOption, TessStatus, Tessellator, TessellatorApi,
+    WindingRule,
+};

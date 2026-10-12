@@ -78,6 +78,7 @@ impl Tessellator {
         self.out_elements = vec![TESS_UNDEF; max_face as usize * stride];
         self.out_vertices = vec![0.0; max_vert as usize * vertex_size];
         self.out_vertex_indices = vec![TESS_UNDEF; max_vert as usize];
+        self.out_vertex_clients = vec![TESS_UNDEF; max_vert as usize];
         // Edge flags run parallel to the *primary* triangle-vertex slice of
         // `out_elements` (length = `max_face * poly_size`), independent of
         // the neighbour-face stride used by `ConnectedPolygons`.
@@ -95,6 +96,13 @@ impl Tessellator {
                     self.out_vertices[base + 2] = mesh.verts[v as usize].coords[2];
                 }
                 self.out_vertex_indices[n as usize] = mesh.verts[v as usize].idx;
+                // GLU's client index: the input index unless a combine
+                // callback replaced it (see `render_order.rs`).
+                self.out_vertex_clients[n as usize] = self
+                    .client_override
+                    .get(&v)
+                    .copied()
+                    .unwrap_or(mesh.verts[v as usize].idx);
             }
             v = mesh.verts[v as usize].next;
         }

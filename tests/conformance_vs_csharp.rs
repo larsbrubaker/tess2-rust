@@ -309,3 +309,73 @@ fn tess2_rust_matches_csharp_tesselator_on_lion() {
         );
     }
 }
+
+/// `Tessellator::render_order` reproduces the C# reference *in order*: the
+/// client vertex list (inputs, then combined vertices) bit for bit, and every
+/// emitted (client index, edge flag) in the sequence agg-sharp's callbacks
+/// produced it.
+#[test]
+fn rust_only_render_order_matches_csharp_callback_order_on_lion() {
+    let refs = parse_reference("tests/data/lion_tess_reference.txt");
+    let inputs = parse_lion_polygons();
+    let refs_by_index: std::collections::HashMap<usize, &RefPolygon> =
+        refs.iter().map(|r| (r.index, r)).collect();
+
+    let mut compared = 0;
+    let mut mismatches: Vec<String> = Vec::new();
+    for (i, input) in inputs.iter().enumerate() {
+        let Some(reference) = refs_by_index.get(&i) else {
+            continue;
+        };
+        assert_eq!(reference.input_count, input.len(), "polygon #{i}");
+        let mut tess = Tessellator::new();
+        let flat: Vec<f64> = input.iter().flat_map(|&(x, y)| [x, y]).collect();
+        tess.add_contour(2, &flat);
+        assert!(tess.tessellate(WindingRule::Odd, ElementType::Polygons, 3, 2, None));
+        let order = tess.render_order().expect("triangles were requested");
+
+        let rust_vertices: Vec<CoordBits> = order
+            .vertices
+            .iter()
+            .map(|v| (v[0].to_bits(), v[1].to_bits()))
+            .collect();
+        let csharp_vertices: Vec<CoordBits> = reference
+            .vertices
+            .iter()
+            .map(|&(x, y)| (x.to_bits(), y.to_bits()))
+            .collect();
+        if rust_vertices != csharp_vertices {
+            mismatches.push(format!(
+                "polygon #{i}: client vertices differ — rust {}, csharp {}",
+                rust_vertices.len(),
+                csharp_vertices.len()
+            ));
+            continue;
+        }
+
+        let rust_indices: Vec<(u32, u8)> = order
+            .indices
+            .iter()
+            .map(|r| (r.index, r.is_edge as u8))
+            .collect();
+        if rust_indices != reference.tri_vertices {
+            let first = rust_indices
+                .iter()
+                .zip(&reference.tri_vertices)
+                .position(|(a, b)| a != b)
+                .unwrap_or(rust_indices.len().min(reference.tri_vertices.len()));
+            mismatches.push(format!(
+                "polygon #{i}: render order differs at corner {first} of {} (csharp {})",
+                rust_indices.len(),
+                reference.tri_vertices.len()
+            ));
+        }
+        compared += 1;
+    }
+
+    assert!(compared > 100, "only {compared} polygons compared");
+    for m in mismatches.iter().take(40) {
+        eprintln!("{m}");
+    }
+    assert!(mismatches.is_empty(), "{} polygons differ", mismatches.len());
+}

@@ -37,6 +37,7 @@ Crate listing: **[tess2-rust on crates.io](https://crates.io/crates/tess2-rust)*
 - **Double Precision** — coordinates and sweep predicates run in `f64` for rotation-stable topology on near-collinear geometry
 - **Self-Intersecting Polygons** — handles self-intersections, overlapping contours, and degenerate geometry
 - **C#/libtess2 Conformance** — 132/132 lion polygons match MatterCAD's agg-sharp `Tesselator` topologically (see `tests/conformance_vs_csharp.rs`)
+- **GLU Render Order** — `render_order()` lists the triangles in the order a GLU callback tessellator with an edge-flag callback emits them (agg-sharp's `Tesselator`), numbered by GLU client index with combined vertices appended; matches the lion corner for corner and agg-sharp's recorded GLU streams (`tests/tesselator_tests.rs`)
 - **No Unsafe Code** — zero `unsafe` blocks in the entire codebase
 - **Zero Dependencies** — no external runtime dependencies
 - **WASM-Compatible** — compiles to WebAssembly for browser-based usage

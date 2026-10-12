@@ -14,13 +14,17 @@ mod geometry;
 mod output;
 mod priority_queue;
 mod region;
+mod render_order;
 mod sweep;
 #[cfg(test)]
 mod tests;
 
 pub use api::TessellatorApi;
+pub use render_order::{RenderIndex, RenderOrder};
 
 use geometry::{check_orientation, compute_normal, dot, is_valid_coord, long_axis};
+
+use std::collections::HashMap;
 
 use crate::dict::Dict;
 use crate::geom::{vert_eq, Real};
@@ -119,6 +123,19 @@ pub struct Tessellator {
     pub out_element_count: usize,
     vertex_index_counter: u32,
 
+    // GLU render-order bookkeeping (see `render_order.rs`).
+    /// Coordinates of every vertex passed to `add_contour`, by input index.
+    input_coords: Vec<[Real; 3]>,
+    /// Coordinates of each GLU combine callback, in sweep order.
+    combined_coords: Vec<[Real; 3]>,
+    /// Mesh vertices whose GLU client index a combine callback replaced.
+    client_override: HashMap<VertIdx, u32>,
+    /// GLU client index of each output vertex (parallel to `out_vertex_indices`).
+    out_vertex_clients: Vec<u32>,
+    /// Element type and polygon size of the last successful tessellation.
+    out_element_type: Option<ElementType>,
+    out_poly_size: usize,
+
     // Primary event queue: pre-sorted vertices for the initial sweep phase
     sorted_events: Vec<VertIdx>,
     sorted_event_pos: usize,
@@ -154,6 +171,12 @@ impl Tessellator {
             out_vertex_count: 0,
             out_element_count: 0,
             vertex_index_counter: 0,
+            input_coords: Vec::new(),
+            combined_coords: Vec::new(),
+            client_override: HashMap::new(),
+            out_vertex_clients: Vec::new(),
+            out_element_type: None,
+            out_poly_size: 0,
             sorted_events: Vec::new(),
             sorted_event_pos: 0,
             sweep_event_num: 0,
@@ -226,6 +249,7 @@ impl Tessellator {
             mesh.verts[org as usize].coords[2] = cz;
             mesh.verts[org as usize].idx = self.vertex_index_counter;
             self.vertex_index_counter += 1;
+            self.input_coords.push([cx, cy, cz]);
 
             let w = if self.reverse_contours { -1 } else { 1 };
             mesh.edges[e as usize].winding = w;
@@ -251,6 +275,11 @@ impl Tessellator {
         self.out_edge_flags.clear();
         self.out_vertex_count = 0;
         self.out_element_count = 0;
+        self.out_vertex_clients.clear();
+        self.out_element_type = None;
+        self.out_poly_size = 0;
+        self.combined_coords.clear();
+        self.client_override.clear();
         self.normal = normal.unwrap_or([0.0, 0.0, 0.0]);
 
         if self.mesh.is_none() {
@@ -277,7 +306,12 @@ impl Tessellator {
         }
 
         self.mesh = None;
-        self.status == TessStatus::Ok
+        if self.status != TessStatus::Ok {
+            return false;
+        }
+        self.out_element_type = Some(element_type);
+        self.out_poly_size = poly_size;
+        true
     }
 
     // ─────── Accessors ────────────────────────────────────────────────────────
@@ -418,6 +452,8 @@ impl Tessellator {
                 let an1 = self.mesh.as_ref().unwrap().verts[v as usize].an_edge;
                 let an2 = self.mesh.as_ref().unwrap().verts[next_v as usize].an_edge;
                 if an1 != INVALID && an2 != INVALID {
+                    // GLU `SpliceMergeVertices`: a combine callback on `v`.
+                    self.record_combine(v);
                     if !self.mesh.as_mut().unwrap().splice(an1, an2) {
                         return false;
                     }
@@ -479,6 +515,19 @@ impl Tessellator {
 
     fn remove_degenerate_edges(&mut self) -> bool {
         // Mirrors C RemoveDegenerateEdges exactly
+        let mut combined: Vec<VertIdx> = Vec::new();
+        let ok = self.remove_degenerate_edges_in_mesh(&mut combined);
+        // Nothing else combines during this pass, so recording its combine
+        // callbacks afterwards, in order, numbers them as GLU does.
+        for v in combined {
+            self.record_combine(v);
+        }
+        ok
+    }
+
+    /// The mesh walk of `remove_degenerate_edges`; `combined` collects the
+    /// vertices GLU's `SpliceMergeVertices` would run its combine callback on.
+    fn remove_degenerate_edges_in_mesh(&mut self, combined: &mut Vec<VertIdx>) -> bool {
         let mesh = match self.mesh.as_mut() {
             Some(m) => m,
             None => return true,
@@ -501,6 +550,8 @@ impl Tessellator {
 
                 if vert_eq(os, ot, ds, dt) && mesh.edges[e_lnext as usize].lnext != e {
                     // Zero-length edge, contour has at least 3 edges
+                    // (GLU `SpliceMergeVertices(eLnext, e)` keeps eLnext's origin).
+                    combined.push(mesh.edges[e_lnext as usize].org);
                     mesh.splice(e_lnext, e);
                     if !mesh.delete_edge(e) {
                         return false;

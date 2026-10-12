@@ -8,7 +8,7 @@
 
 use crate::geom::Real;
 
-use super::{ElementType, TessOption, TessStatus, Tessellator, WindingRule};
+use super::{ElementType, RenderOrder, TessOption, TessStatus, Tessellator, WindingRule};
 
 /// High-level tessellator (public interface).
 pub struct TessellatorApi {
@@ -56,6 +56,10 @@ impl TessellatorApi {
     /// Per triangle-vertex edge flags — see [`Tessellator::out_edge_flags`].
     pub fn edge_flags(&self) -> &[u8] {
         self.inner.edge_flags()
+    }
+    /// GLU render-order output — see [`Tessellator::render_order`].
+    pub fn render_order(&self) -> Option<RenderOrder> {
+        self.inner.render_order()
     }
     pub fn status(&self) -> TessStatus {
         self.inner.get_status()

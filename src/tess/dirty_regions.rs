@@ -77,6 +77,9 @@ impl Tessellator {
                 let handle = self.mesh.as_ref().unwrap().verts[e_up_org as usize].pq_handle;
                 self.pq_delete(handle);
                 let e_lo_oprev = self.mesh.as_ref().unwrap().oprev(e_lo);
+                // GLU `SpliceMergeVertices(eLo->Oprev, eUp)`: a combine on
+                // the kept vertex, eLo's origin.
+                self.record_combine(e_lo_org);
                 self.mesh.as_mut().unwrap().splice(e_lo_oprev, e_up);
             }
         } else {
@@ -386,6 +389,8 @@ impl Tessellator {
             org_lo_s, org_lo_t, ol_coords, dst_lo_s, dst_lo_t, dl_coords,
         );
         self.mesh.as_mut().unwrap().verts[e_up2_org as usize].idx = TESS_UNDEF;
+        // GLU `GetIntersectData`: the combine callback for the crossing.
+        self.record_combine(e_up2_org);
 
         // Insert new vertex into priority queue
         let handle = self.pq_insert(e_up2_org);

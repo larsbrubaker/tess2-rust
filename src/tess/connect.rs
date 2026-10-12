@@ -316,11 +316,13 @@ impl Tessellator {
 
     /// Port of agg-sharp's `SpliceMergeVertices` — two vertices that the
     /// sweep has decided are "the same" get their Onext rings spliced
-    /// together so the mesh sees a single vertex.  We skip the user-
-    /// callback combine (no client vertex merging) and just call
-    /// `meshSplice`, matching the no-callback semantics of the C reference.
+    /// together so the mesh sees a single vertex.  There is no user
+    /// combine callback: the combine is only recorded on `e1`'s origin
+    /// (the vertex GLU keeps) for [`Tessellator::render_order`].
     pub(super) fn splice_merge_vertices(&mut self, e1: EdgeIdx, e2: EdgeIdx) {
         if e1 == INVALID || e2 == INVALID { return; }
+        let e1_org = self.mesh.as_ref().unwrap().edges[e1 as usize].org;
+        self.record_combine(e1_org);
         // Delete one of the two originals from the PQ if it's still queued
         // — matches `VertexPriorityQue.Delete(eUp.originVertex.priorityQueueHandle)`
         // from the C# call site in `CheckForRightSplice`.  Safe to skip
