@@ -111,9 +111,17 @@ fn lion_rotation_must_never_panic() {
     // Match the LionView interactive transform shape:
     //   r = rotate(angle), s = scale(mouse_scale), k = skew(skew_x, skew_y)
     //   p' = (k ∘ r ∘ s)(p - centre) + centre
-    let angles: Vec<f64> = (0..36).map(|i| (i as f64) * std::f64::consts::TAU / 36.0).collect();
+    let angles: Vec<f64> = (0..36)
+        .map(|i| (i as f64) * std::f64::consts::TAU / 36.0)
+        .collect();
     let scales: &[f64] = &[0.25, 0.5, 1.0, 2.5, 7.0];
-    let skews: &[(f64, f64)] = &[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (-0.1, 0.1), (0.2, -0.2)];
+    let skews: &[(f64, f64)] = &[
+        (0.0, 0.0),
+        (0.05, 0.0),
+        (0.0, 0.05),
+        (-0.1, 0.1),
+        (0.2, -0.2),
+    ];
 
     let rules = [
         WindingRule::Odd,

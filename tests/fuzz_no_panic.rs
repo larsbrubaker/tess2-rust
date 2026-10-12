@@ -120,7 +120,8 @@ fn self_intersecting_pentagram_must_not_panic() {
     let n = 5;
     let r = 50.0;
     for k in 0..n {
-        let theta = (k as f64) * 2.0 * std::f64::consts::TAU / (n as f64) - std::f64::consts::FRAC_PI_2;
+        let theta =
+            (k as f64) * 2.0 * std::f64::consts::TAU / (n as f64) - std::f64::consts::FRAC_PI_2;
         star.push(50.0 + r * theta.cos());
         star.push(50.0 + r * theta.sin());
     }
@@ -132,10 +133,14 @@ fn self_intersecting_pentagram_must_not_panic() {
 #[test]
 fn near_collinear_sliver_must_not_panic() {
     let contour = vec![
-        0.0, 0.0, // a
-        100.0, 0.0, // b
-        100.0, 0.000_000_1, // c — essentially on the AB line
-        50.0, 0.000_000_05,
+        0.0,
+        0.0, // a
+        100.0,
+        0.0, // b
+        100.0,
+        0.000_000_1, // c — essentially on the AB line
+        50.0,
+        0.000_000_05,
     ];
     assert_no_panic("near-collinear sliver", &[contour]);
 }
@@ -166,7 +171,10 @@ fn pseudo_random_polygon_swarm_must_not_panic() {
     struct Lcg(u64);
     impl Lcg {
         fn next_f64(&mut self) -> f64 {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (self.0 >> 11) as f64 / (1u64 << 53) as f64
         }
     }
@@ -181,8 +189,7 @@ fn pseudo_random_polygon_swarm_must_not_panic() {
             let r = 5.0 + rng.next_f64() * 40.0;
             let mut c = Vec::new();
             for k in 0..n {
-                let theta = (k as f64) / (n as f64) * std::f64::consts::TAU
-                    + rng.next_f64() * 0.2;
+                let theta = (k as f64) / (n as f64) * std::f64::consts::TAU + rng.next_f64() * 0.2;
                 let rk = r * (0.5 + rng.next_f64());
                 c.push(cx + rk * theta.cos());
                 c.push(cy + rk * theta.sin());

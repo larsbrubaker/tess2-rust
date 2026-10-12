@@ -8,11 +8,11 @@
 //! `top_left/right_region` helpers.  The index-keyed `active_region`
 //! invariant lives here (see `delete_region` / `fix_upper_edge`).
 
-use crate::geom::{Real, edge_sign, vert_eq, vert_leq};
+use super::{RegionIdx, Tessellator, WindingRule};
+use crate::dict::{Dict, NodeIdx, DICT_HEAD};
+use crate::geom::{edge_sign, vert_eq, vert_leq, Real};
 use crate::mesh::{EdgeIdx, INVALID};
-use crate::dict::{DICT_HEAD, Dict, NodeIdx};
 use crate::sweep::ActiveRegion;
-use super::{Tessellator, WindingRule, RegionIdx};
 
 impl Tessellator {
     // ─────── Edge dictionary initialization ──────────────────────────────────
@@ -232,7 +232,11 @@ impl Tessellator {
 
     /// Insert a new region below `reg_above` with upper edge `e_new_up`.
     /// Mirrors C's AddRegionBelow + ComputeWinding.
-    pub(super) fn add_region_below(&mut self, _reg_above: RegionIdx, e_new_up: EdgeIdx) -> RegionIdx {
+    pub(super) fn add_region_below(
+        &mut self,
+        _reg_above: RegionIdx,
+        e_new_up: EdgeIdx,
+    ) -> RegionIdx {
         let reg_new = self.alloc_region();
         {
             let r = self.region_mut(reg_new);
@@ -258,7 +262,8 @@ impl Tessellator {
         // `debug_assert!`, but that aborted debug builds on perfectly valid input
         // — a robustness bug in itself — so it's now a trace-only note.
         if self.trace_enabled {
-            let sym_region = self.mesh.as_ref().unwrap().edges[(e_new_up ^ 1) as usize].active_region;
+            let sym_region =
+                self.mesh.as_ref().unwrap().edges[(e_new_up ^ 1) as usize].active_region;
             if sym_region != INVALID {
                 eprintln!(
                     "R   ADD_REGION_BELOW({e_new_up}): sym {} still bound to region {sym_region} \
@@ -361,7 +366,9 @@ impl Tessellator {
                         loop {
                             edge_count += 1;
                             iter = mesh.edges[iter as usize].lnext;
-                            if iter == an || edge_count > 10000 { break; }
+                            if iter == an || edge_count > 10000 {
+                                break;
+                            }
                         }
                     }
                     let org = mesh.edges[e as usize].org;

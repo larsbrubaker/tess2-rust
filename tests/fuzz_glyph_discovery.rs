@@ -57,7 +57,10 @@ fn glyph_like(seed: u64, n: usize) -> Vec<f64> {
 /// propagate with their backtrace.  `GLYPH_FUZZ_SEED=<n> cargo test repro_one_seed -- --nocapture`.
 #[test]
 fn repro_one_seed() {
-    let seed: u64 = match std::env::var("GLYPH_FUZZ_SEED").ok().and_then(|s| s.parse().ok()) {
+    let seed: u64 = match std::env::var("GLYPH_FUZZ_SEED")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
         Some(s) => s,
         None => return, // no-op unless a seed is requested
     };
@@ -78,7 +81,11 @@ fn repro_one_seed() {
     let mut tess = Tessellator::new();
     tess.add_contour(2, &contour);
     let ok = tess.tessellate(WindingRule::NonZero, ElementType::Polygons, 3, 2, None);
-    eprintln!("ok={ok} verts={} elems={}", tess.vertices().len(), tess.elements().len());
+    eprintln!(
+        "ok={ok} verts={} elems={}",
+        tess.vertices().len(),
+        tess.elements().len()
+    );
 }
 
 #[test]
@@ -96,7 +103,10 @@ fn discover_glyph_sweep_panics() {
 
     // location -> (seed, n, message)
     let mut distinct: BTreeMap<String, (u64, usize, String)> = BTreeMap::new();
-    let seeds: u64 = std::env::var("GLYPH_FUZZ_SEEDS").ok().and_then(|s| s.parse().ok()).unwrap_or(400);
+    let seeds: u64 = std::env::var("GLYPH_FUZZ_SEEDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(400);
 
     for seed in 0u64..seeds {
         if seed % 25 == 0 {
@@ -124,9 +134,16 @@ fn discover_glyph_sweep_panics() {
     }
 
     let _ = std::panic::take_hook();
-    eprintln!("\n=== glyph fuzz: {seeds} seeds, {} distinct panic sites ===", distinct.len());
+    eprintln!(
+        "\n=== glyph fuzz: {seeds} seeds, {} distinct panic sites ===",
+        distinct.len()
+    );
     for (where_, (seed, n, msg)) in &distinct {
         eprintln!("  {where_}  (seed={seed} n={n}): {msg}");
     }
-    assert!(distinct.is_empty(), "{} distinct glyph-sweep panic sites", distinct.len());
+    assert!(
+        distinct.is_empty(),
+        "{} distinct glyph-sweep panic sites",
+        distinct.len()
+    );
 }

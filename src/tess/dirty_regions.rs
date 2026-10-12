@@ -8,11 +8,11 @@
 //! left/right splices and edge intersections, splitting and splicing the
 //! mesh until the sweep invariants hold again.
 
+use super::geometry::compute_intersect_coords;
+use super::{RegionIdx, Tessellator, TESS_UNDEF};
 use crate::geom::{edge_intersect, edge_sign, vert_eq, vert_leq};
-use crate::mesh::{INVALID};
+use crate::mesh::INVALID;
 use crate::priorityq::INVALID_HANDLE;
-use super::geometry::{compute_intersect_coords};
-use super::{Tessellator, TESS_UNDEF, RegionIdx};
 
 impl Tessellator {
     pub(super) fn check_for_right_splice(&mut self, reg_up: RegionIdx) -> bool {

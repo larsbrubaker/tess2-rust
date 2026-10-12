@@ -724,7 +724,9 @@ impl Mesh {
         // lets `tessellate_mono_region` skip this triangulation step; the
         // face is then marked non-inside so no degenerate output slips
         // through (see `tessellate_interior`'s fallback).
-        if e_new == INVALID { return None; }
+        if e_new == INVALID {
+            return None;
+        }
         let e_new_sym = e_new ^ 1;
 
         let e_dst_lface = self.edges[e_dst as usize].lface;
@@ -1008,7 +1010,6 @@ impl Mesh {
             f = next;
         }
     }
-
 }
 
 mod tessellate;
@@ -1057,5 +1058,4 @@ mod tests {
         let second = mesh.verts[first as usize].next;
         assert_ne!(second, INVALID);
     }
-
 }

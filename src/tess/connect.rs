@@ -8,11 +8,11 @@
 //! event vertex into the active region structure, plus the dict search
 //! helpers they rely on.
 
-use crate::geom::{vert_eq, vert_leq};
-use crate::mesh::{EdgeIdx, INVALID, VertIdx};
+use super::{RegionIdx, Tessellator};
 use crate::dict::DICT_HEAD;
+use crate::geom::{vert_eq, vert_leq};
+use crate::mesh::{EdgeIdx, VertIdx, INVALID};
 use crate::priorityq::INVALID_HANDLE;
-use super::{Tessellator, RegionIdx};
 
 impl Tessellator {
     pub(super) fn connect_right_vertex(&mut self, reg_up: RegionIdx, e_bottom_left: EdgeIdx) {
@@ -290,8 +290,8 @@ impl Tessellator {
             return;
         }
         let mut e_top_right = reg_e_up ^ 1;
-        let mut e_top_left  = self.mesh.as_ref().unwrap().edges[e_top_right as usize].onext;
-        let e_last      = e_top_left;
+        let mut e_top_left = self.mesh.as_ref().unwrap().edges[e_top_right as usize].onext;
+        let e_last = e_top_left;
         // Temp fixable-edge cleanup — matches C#.
         if self.region(reg).fix_upper_edge {
             if e_top_left != e_top_right {
@@ -320,7 +320,9 @@ impl Tessellator {
     /// combine callback: the combine is only recorded on `e1`'s origin
     /// (the vertex GLU keeps) for [`Tessellator::render_order`].
     pub(super) fn splice_merge_vertices(&mut self, e1: EdgeIdx, e2: EdgeIdx) {
-        if e1 == INVALID || e2 == INVALID { return; }
+        if e1 == INVALID || e2 == INVALID {
+            return;
+        }
         let e1_org = self.mesh.as_ref().unwrap().edges[e1 as usize].org;
         self.record_combine(e1_org);
         // Delete one of the two originals from the PQ if it's still queued

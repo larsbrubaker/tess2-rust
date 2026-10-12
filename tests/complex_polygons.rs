@@ -143,7 +143,10 @@ fn dude_tessellation_area_matches_polygon() {
     eprintln!(
         "Input: {} vertices, bbox=({:.1},{:.1})-({:.1},{:.1}), signed_area={:.1}, abs_area={:.1}",
         input_verts.len() / 2,
-        ixmin, iymin, ixmax, iymax,
+        ixmin,
+        iymin,
+        ixmax,
+        iymax,
         helpers::polygon_signed_area(input_verts),
         polygon_area
     );
@@ -180,11 +183,13 @@ fn dude_tessellation_area_matches_polygon() {
     let mut outside_count = 0;
     let mut outside_area = 0.0f64;
     for tri in out_elems.chunks(3) {
-        if tri.len() < 3 { break; }
+        if tri.len() < 3 {
+            break;
+        }
         let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
-        let (x0, y0) = (out_verts[i0*2], out_verts[i0*2+1]);
-        let (x1, y1) = (out_verts[i1*2], out_verts[i1*2+1]);
-        let (x2, y2) = (out_verts[i2*2], out_verts[i2*2+1]);
+        let (x0, y0) = (out_verts[i0 * 2], out_verts[i0 * 2 + 1]);
+        let (x1, y1) = (out_verts[i1 * 2], out_verts[i1 * 2 + 1]);
+        let (x2, y2) = (out_verts[i2 * 2], out_verts[i2 * 2 + 1]);
         let cx = (x0 + x1 + x2) / 3.0;
         let cy = (y0 + y1 + y2) / 3.0;
         let area = helpers::triangle_area(x0, y0, x1, y1, x2, y2).abs();
@@ -202,7 +207,10 @@ fn dude_tessellation_area_matches_polygon() {
     let tess_signed_area = helpers::total_tessellation_signed_area(&tess);
     eprintln!(
         "Tessellation abs_area={:.1}, signed_area={:.1}, polygon area={:.1}, ratio={:.4}",
-        tess_area, tess_signed_area, polygon_area, tess_area / polygon_area
+        tess_area,
+        tess_signed_area,
+        polygon_area,
+        tess_area / polygon_area
     );
     eprintln!(
         "{} triangles with centroid outside bbox, total outside area={:.1}",
@@ -215,12 +223,17 @@ fn dude_tessellation_area_matches_polygon() {
     let mut pos_area = 0.0f64;
     let mut neg_area = 0.0f64;
     for tri in out_elems.chunks(3) {
-        if tri.len() < 3 { break; }
+        if tri.len() < 3 {
+            break;
+        }
         let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
         let a = helpers::triangle_area(
-            out_verts[i0*2], out_verts[i0*2+1],
-            out_verts[i1*2], out_verts[i1*2+1],
-            out_verts[i2*2], out_verts[i2*2+1],
+            out_verts[i0 * 2],
+            out_verts[i0 * 2 + 1],
+            out_verts[i1 * 2],
+            out_verts[i1 * 2 + 1],
+            out_verts[i2 * 2],
+            out_verts[i2 * 2 + 1],
         );
         if a >= 0.0 {
             pos_count += 1;

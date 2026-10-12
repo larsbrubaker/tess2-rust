@@ -17,7 +17,12 @@ fn is_boundary_edge(mesh: &crate::mesh::Mesh, e: u32) -> bool {
 }
 
 impl Tessellator {
-    pub(crate) fn output_polymesh(&mut self, element_type: ElementType, poly_size: usize, vertex_size: usize) {
+    pub(crate) fn output_polymesh(
+        &mut self,
+        element_type: ElementType,
+        poly_size: usize,
+        vertex_size: usize,
+    ) {
         if poly_size > 3 {
             if let Some(ref mut mesh) = self.mesh {
                 if !mesh.merge_convex_faces(poly_size) {

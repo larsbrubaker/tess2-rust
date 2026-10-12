@@ -8,12 +8,16 @@
 //! `add_right_edges` and `finish_left_regions` splice the new and
 //! finished edges into the active region structure around it.
 
-use crate::geom::{vert_leq};
-use crate::mesh::{EdgeIdx, INVALID, VertIdx};
-use super::{Tessellator, RegionIdx};
+use super::{RegionIdx, Tessellator};
+use crate::geom::vert_leq;
+use crate::mesh::{EdgeIdx, VertIdx, INVALID};
 
 impl Tessellator {
-    pub(super) fn finish_left_regions(&mut self, reg_first: RegionIdx, reg_last: RegionIdx) -> EdgeIdx {
+    pub(super) fn finish_left_regions(
+        &mut self,
+        reg_first: RegionIdx,
+        reg_last: RegionIdx,
+    ) -> EdgeIdx {
         let mut reg_prev = reg_first;
         let mut e_prev = self.region(reg_first).e_up;
 
@@ -121,8 +125,7 @@ impl Tessellator {
                         mesh.verts[dst as usize].s,
                         mesh.verts[dst as usize].t,
                     );
-                let sym_already_bound =
-                    mesh.edges[(e ^ 1) as usize].active_region != INVALID;
+                let sym_already_bound = mesh.edges[(e ^ 1) as usize].active_region != INVALID;
                 not_right_going || sym_already_bound
             };
             if !skip {
@@ -240,7 +243,6 @@ impl Tessellator {
         }
     }
 
-
     pub(super) fn sweep_event(&mut self, v_event: VertIdx) -> bool {
         let an_edge = self.mesh.as_ref().unwrap().verts[v_event as usize].an_edge;
         if an_edge == INVALID {
@@ -252,10 +254,7 @@ impl Tessellator {
                 self.mesh.as_ref().unwrap().verts[v_event as usize].s,
                 self.mesh.as_ref().unwrap().verts[v_event as usize].t,
             );
-            eprintln!(
-                "R SWEEP #{} s={:.6} t={:.6}",
-                self.sweep_event_num, vs, vt
-            );
+            eprintln!("R SWEEP #{} s={:.6} t={:.6}", self.sweep_event_num, vs, vt);
             self.sweep_event_num += 1;
         }
 

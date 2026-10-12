@@ -158,7 +158,12 @@ fn debug_single_triangle() {
             let winding = mesh.edges[e as usize].winding;
             eprintln!(
                 "  Edge {}: org={} ({:.1},{:.1}) lface={} w={} onext={} lnext={} next={}",
-                e, org, os, ot, lface, winding,
+                e,
+                org,
+                os,
+                ot,
+                lface,
+                winding,
                 mesh.edges[e as usize].onext,
                 mesh.edges[e as usize].lnext,
                 mesh.edges[e as usize].next
@@ -254,14 +259,46 @@ fn singularity_quad_no_panic() {
 #[test]
 fn lion_zigzag_fur_must_not_panic() {
     let verts: &[[f64; 2]] = &[
-        [57.0, 91.0], [42.0, 111.0], [52.0, 105.0], [41.0, 117.0], [53.0, 112.0],
-        [46.0, 120.0], [53.0, 116.0], [50.0, 124.0], [57.0, 119.0], [55.0, 127.0],
-        [61.0, 122.0], [60.0, 130.0], [67.0, 126.0], [66.0, 134.0], [71.0, 129.0],
-        [72.0, 136.0], [77.0, 130.0], [76.0, 137.0], [80.0, 133.0], [82.0, 138.0],
-        [86.0, 135.0], [96.0, 135.0], [94.0, 129.0], [86.0, 124.0], [83.0, 117.0],
-        [77.0, 123.0], [79.0, 117.0], [73.0, 120.0], [75.0, 112.0], [68.0, 116.0],
-        [71.0, 111.0], [65.0, 114.0], [69.0, 107.0], [63.0, 110.0], [68.0, 102.0],
-        [61.0, 107.0], [66.0, 98.0], [61.0, 103.0], [63.0, 97.0], [57.0, 99.0],
+        [57.0, 91.0],
+        [42.0, 111.0],
+        [52.0, 105.0],
+        [41.0, 117.0],
+        [53.0, 112.0],
+        [46.0, 120.0],
+        [53.0, 116.0],
+        [50.0, 124.0],
+        [57.0, 119.0],
+        [55.0, 127.0],
+        [61.0, 122.0],
+        [60.0, 130.0],
+        [67.0, 126.0],
+        [66.0, 134.0],
+        [71.0, 129.0],
+        [72.0, 136.0],
+        [77.0, 130.0],
+        [76.0, 137.0],
+        [80.0, 133.0],
+        [82.0, 138.0],
+        [86.0, 135.0],
+        [96.0, 135.0],
+        [94.0, 129.0],
+        [86.0, 124.0],
+        [83.0, 117.0],
+        [77.0, 123.0],
+        [79.0, 117.0],
+        [73.0, 120.0],
+        [75.0, 112.0],
+        [68.0, 116.0],
+        [71.0, 111.0],
+        [65.0, 114.0],
+        [69.0, 107.0],
+        [63.0, 110.0],
+        [68.0, 102.0],
+        [61.0, 107.0],
+        [66.0, 98.0],
+        [61.0, 103.0],
+        [63.0, 97.0],
+        [57.0, 99.0],
         [57.0, 91.0],
     ];
     let flat: Vec<f64> = verts.iter().flat_map(|v| [v[0], v[1]]).collect();
@@ -274,7 +311,10 @@ fn lion_zigzag_fur_must_not_panic() {
     // `n - 2`; tess2 subdivides each winding region.  What we DO check is
     // that we got more than zero output — the previous bug manifested as
     // `tessellate_mono_region` failing and the face being dropped entirely.
-    assert!(tess.element_count() > 0, "must produce at least one triangle");
+    assert!(
+        tess.element_count() > 0,
+        "must produce at least one triangle"
+    );
 }
 
 /// The second panicking lion polygon — a 33-vertex zigzag on the lion's
@@ -282,13 +322,39 @@ fn lion_zigzag_fur_must_not_panic() {
 #[test]
 fn lion_zigzag_side_must_not_panic() {
     let verts: &[[f64; 2]] = &[
-        [74.0, 220.0], [67.0, 230.0], [67.0, 221.0], [59.0, 235.0], [63.0, 233.0],
-        [60.0, 248.0], [70.0, 232.0], [65.0, 249.0], [71.0, 243.0], [67.0, 256.0],
-        [73.0, 250.0], [69.0, 262.0], [73.0, 259.0], [71.0, 267.0], [76.0, 262.0],
-        [72.0, 271.0], [78.0, 270.0], [76.0, 275.0], [82.0, 274.0], [78.0, 290.0],
-        [86.0, 279.0], [86.0, 289.0], [92.0, 274.0], [88.0, 275.0], [87.0, 264.0],
-        [82.0, 270.0], [82.0, 258.0], [77.0, 257.0], [78.0, 247.0], [73.0, 246.0],
-        [77.0, 233.0], [72.0, 236.0], [74.0, 220.0],
+        [74.0, 220.0],
+        [67.0, 230.0],
+        [67.0, 221.0],
+        [59.0, 235.0],
+        [63.0, 233.0],
+        [60.0, 248.0],
+        [70.0, 232.0],
+        [65.0, 249.0],
+        [71.0, 243.0],
+        [67.0, 256.0],
+        [73.0, 250.0],
+        [69.0, 262.0],
+        [73.0, 259.0],
+        [71.0, 267.0],
+        [76.0, 262.0],
+        [72.0, 271.0],
+        [78.0, 270.0],
+        [76.0, 275.0],
+        [82.0, 274.0],
+        [78.0, 290.0],
+        [86.0, 279.0],
+        [86.0, 289.0],
+        [92.0, 274.0],
+        [88.0, 275.0],
+        [87.0, 264.0],
+        [82.0, 270.0],
+        [82.0, 258.0],
+        [77.0, 257.0],
+        [78.0, 247.0],
+        [73.0, 246.0],
+        [77.0, 233.0],
+        [72.0, 236.0],
+        [74.0, 220.0],
     ];
     let flat: Vec<f64> = verts.iter().flat_map(|v| [v[0], v[1]]).collect();
 
@@ -300,7 +366,10 @@ fn lion_zigzag_side_must_not_panic() {
     // Non-zero means the sweep produced SOMETHING; the rotation-stability
     // test below will verify the count is invariant under transform, which
     // is the real correctness criterion.
-    assert!(tess.element_count() > 0, "must produce at least one triangle");
+    assert!(
+        tess.element_count() > 0,
+        "must produce at least one triangle"
+    );
 }
 
 /// A unit square tessellates into 2 triangles; every triangle edge that
@@ -320,7 +389,12 @@ fn edge_flags_on_unit_square() {
     // interior edge (the diagonal) → flag sum per triangle = 2.
     for tri in 0..2 {
         let s: u32 = flags[tri * 3..tri * 3 + 3].iter().map(|&f| f as u32).sum();
-        assert_eq!(s, 2, "triangle {tri} should have 2 boundary + 1 interior edge, got flags {:?}", &flags[tri*3..tri*3+3]);
+        assert_eq!(
+            s,
+            2,
+            "triangle {tri} should have 2 boundary + 1 interior edge, got flags {:?}",
+            &flags[tri * 3..tri * 3 + 3]
+        );
     }
 }
 
@@ -338,5 +412,8 @@ fn edge_flags_on_square_with_hole() {
 
     let flags = tess.edge_flags();
     let total_boundary: u32 = flags.iter().map(|&f| f as u32).sum();
-    assert_eq!(total_boundary, 8, "outer 4 + hole 4 = 8 boundary edges, got {total_boundary}");
+    assert_eq!(
+        total_boundary, 8,
+        "outer 4 + hole 4 = 8 boundary edges, got {total_boundary}"
+    );
 }

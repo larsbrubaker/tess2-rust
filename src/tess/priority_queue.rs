@@ -6,9 +6,9 @@
 //! Split out of `tess/mod.rs` (libtess2 priorityq.c usage + the sorted
 //! initial event list).  Operates on the same `Tessellator` state.
 
-use crate::geom::{Real, vert_leq};
-use crate::mesh::{INVALID, V_HEAD, VertIdx};
-use super::{Tessellator};
+use super::Tessellator;
+use crate::geom::{vert_leq, Real};
+use crate::mesh::{VertIdx, INVALID, V_HEAD};
 
 impl Tessellator {
     pub(super) fn init_priority_queue(&mut self) -> bool {

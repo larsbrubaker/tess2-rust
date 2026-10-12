@@ -34,14 +34,22 @@ fn parse_lion_polygons() -> Vec<Vec<[f64; 2]>> {
 
     for raw in DATA.lines() {
         let line = raw.trim();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
         // Colour line: 6-char hex.
-        if line.len() == 6 && line.chars().all(|c| c.is_ascii_hexdigit()) { continue; }
-        if !line.starts_with('M') { continue; }
+        if line.len() == 6 && line.chars().all(|c| c.is_ascii_hexdigit()) {
+            continue;
+        }
+        if !line.starts_with('M') {
+            continue;
+        }
 
         let mut verts: Vec<[f64; 2]> = Vec::new();
         for tok in line.split_whitespace() {
-            if tok == "M" || tok == "L" { continue; }
+            if tok == "M" || tok == "L" {
+                continue;
+            }
             let mut it = tok.split(',');
             let x: Option<f64> = it.next().and_then(|s| s.parse().ok());
             let y: Option<f64> = it.next().and_then(|s| s.parse().ok());
@@ -75,7 +83,9 @@ fn tessellate_one(verts: &[[f64; 2]]) -> Result<(usize, usize), String> {
         Ok((true, v, e)) => Ok((v, e)),
         Ok((false, _, _)) => Err("tessellate() returned false".to_string()),
         Err(e) => {
-            let msg = e.downcast_ref::<String>().cloned()
+            let msg = e
+                .downcast_ref::<String>()
+                .cloned()
                 .or_else(|| e.downcast_ref::<&'static str>().map(|s| s.to_string()))
                 .unwrap_or_else(|| "unknown panic".to_string());
             Err(msg)
@@ -103,8 +113,14 @@ fn every_lion_polygon_tessellates_without_panic() {
     for (i, verts) in polygons.iter().enumerate() {
         match tessellate_one(verts) {
             Ok((v, e)) => {
-                assert!(v > 0, "polygon {i} produced zero output vertices (soft fail): {verts:?}");
-                assert!(e > 0, "polygon {i} produced zero triangles (soft fail): {verts:?}");
+                assert!(
+                    v > 0,
+                    "polygon {i} produced zero output vertices (soft fail): {verts:?}"
+                );
+                assert!(
+                    e > 0,
+                    "polygon {i} produced zero triangles (soft fail): {verts:?}"
+                );
             }
             Err(msg) => failures.push((i, msg, verts.clone())),
         }
@@ -112,12 +128,13 @@ fn every_lion_polygon_tessellates_without_panic() {
     std::panic::set_hook(prev);
 
     if !failures.is_empty() {
-        eprintln!("=== {} / {} lion polygons failed ===", failures.len(), polygons.len());
+        eprintln!(
+            "=== {} / {} lion polygons failed ===",
+            failures.len(),
+            polygons.len()
+        );
         for (i, msg, verts) in &failures {
-            eprintln!(
-                "\n--- polygon #{i} ({} verts) — {msg} ---",
-                verts.len(),
-            );
+            eprintln!("\n--- polygon #{i} ({} verts) — {msg} ---", verts.len(),);
             for v in verts {
                 eprintln!("  [{}, {}],", v[0], v[1]);
             }
@@ -158,10 +175,12 @@ fn lion_polygon_counts_stable_across_rotations() {
     let mut mismatches: Vec<String> = Vec::new();
 
     for (i, verts) in polygons.iter().enumerate() {
-        let results: Vec<Result<(usize, usize), String>> = angles.iter()
+        let results: Vec<Result<(usize, usize), String>> = angles
+            .iter()
             .map(|&a| {
                 let (sa, ca) = a.sin_cos();
-                let rotated: Vec<[f64; 2]> = verts.iter()
+                let rotated: Vec<[f64; 2]> = verts
+                    .iter()
                     .map(|v| [v[0] * ca - v[1] * sa, v[0] * sa + v[1] * ca])
                     .collect();
                 tessellate_one(&rotated)
@@ -176,7 +195,10 @@ fn lion_polygon_counts_stable_across_rotations() {
                     if *counts != f {
                         mismatches.push(format!(
                             "polygon #{i}: rotation {ra} → {}/{}, rotation {rb} → {v}/{e}",
-                            f.0, f.1, v = counts.0, e = counts.1,
+                            f.0,
+                            f.1,
+                            v = counts.0,
+                            e = counts.1,
                             ra = angles.iter().position(|_| true).map(|_| angles[0]).unwrap(),
                             rb = angles[idx],
                         ));
@@ -190,7 +212,12 @@ fn lion_polygon_counts_stable_across_rotations() {
     std::panic::set_hook(prev);
 
     if !mismatches.is_empty() {
-        for m in &mismatches { eprintln!("{m}"); }
-        panic!("{} topology mismatches across rotations — see stderr", mismatches.len());
+        for m in &mismatches {
+            eprintln!("{m}");
+        }
+        panic!(
+            "{} topology mismatches across rotations — see stderr",
+            mismatches.len()
+        );
     }
 }

@@ -2,7 +2,7 @@
 // Standalone geometry helper functions for the tessellator.
 
 use crate::geom::Real;
-use crate::mesh::{Mesh, V_HEAD, INVALID};
+use crate::mesh::{Mesh, INVALID, V_HEAD};
 
 pub(crate) fn is_valid_coord(c: Real) -> bool {
     c <= super::MAX_VALID_COORD && c >= super::MIN_VALID_COORD && !c.is_nan()

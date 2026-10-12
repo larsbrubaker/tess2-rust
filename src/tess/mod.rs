@@ -489,8 +489,12 @@ impl Tessellator {
                         loop {
                             edge_count += 1;
                             e = mesh.edges[e as usize].lnext;
-                            if e == an { break; }
-                            if edge_count > 10000 { break; }
+                            if e == an {
+                                break;
+                            }
+                            if edge_count > 10000 {
+                                break;
+                            }
                         }
                     }
                     if mesh.faces[f as usize].inside {
