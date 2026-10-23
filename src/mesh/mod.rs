@@ -936,15 +936,17 @@ impl Mesh {
         let fa = self.edges[a0 as usize].lface;
         let fb = self.edges[b0 as usize].lface;
 
+        // Onext is Lprev->Sym, so each edge of the two new triangles takes the Sym of the edge
+        // before it in its face; no edge outside the quad changes its Onext.
         self.edges[a0 as usize].org = b_opp;
-        self.edges[a0 as usize].onext = self.edges[b1 as usize].onext ^ 1; // b1->Sym
+        self.edges[a0 as usize].onext = b1 ^ 1;
         self.edges[b0 as usize].org = a_opp;
-        self.edges[b0 as usize].onext = self.edges[a1 as usize].onext ^ 1; // a1->Sym
+        self.edges[b0 as usize].onext = a1 ^ 1;
         self.edges[a2 as usize].onext = b0;
         self.edges[b2 as usize].onext = a0;
-        self.edges[b1 as usize].onext = self.edges[a2 as usize].onext ^ 1; // a2->Sym... wait
+        self.edges[b1 as usize].onext = a2 ^ 1;
+        self.edges[a1 as usize].onext = b2 ^ 1;
 
-        // Redo using correct flip logic from C code:
         self.edges[a0 as usize].lnext = a2;
         self.edges[a2 as usize].lnext = b1;
         self.edges[b1 as usize].lnext = a0;

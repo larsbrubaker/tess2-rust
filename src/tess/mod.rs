@@ -141,6 +141,8 @@ pub struct Tessellator {
     sorted_event_pos: usize,
     sweep_event_num: u32,
     trace_enabled: bool,
+    /// Edge flips the last tessellation's Delaunay refinement made.
+    delaunay_flips: usize,
 }
 
 impl Tessellator {
@@ -181,6 +183,7 @@ impl Tessellator {
             sorted_event_pos: 0,
             sweep_event_num: 0,
             trace_enabled: std::env::var("TESS_TRACE").is_ok(),
+            delaunay_flips: 0,
         }
     }
 
@@ -280,6 +283,7 @@ impl Tessellator {
         self.out_poly_size = 0;
         self.combined_coords.clear();
         self.client_override.clear();
+        self.delaunay_flips = 0;
         self.normal = normal.unwrap_or([0.0, 0.0, 0.0]);
 
         if self.mesh.is_none() {
@@ -339,6 +343,12 @@ impl Tessellator {
     }
     pub fn get_status(&self) -> TessStatus {
         self.status
+    }
+    /// How many edge flips the last `tessellate` call's constrained Delaunay refinement made
+    /// (0 when [`TessOption::ConstrainedDelaunayTriangulation`] is off). The work the
+    /// refinement does grows with this count, so it measures that cost deterministically.
+    pub fn delaunay_flip_count(&self) -> usize {
+        self.delaunay_flips
     }
 
     // ─────── Projection ───────────────────────────────────────────────────────
@@ -511,7 +521,7 @@ impl Tessellator {
                 return false;
             }
             if self.process_cdt {
-                mesh.refine_delaunay();
+                self.delaunay_flips = mesh.refine_delaunay();
             }
         }
         true

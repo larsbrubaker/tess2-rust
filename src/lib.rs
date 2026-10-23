@@ -6,6 +6,7 @@ pub mod bucketalloc;
 pub mod dict;
 pub mod geom;
 pub mod mesh;
+pub mod predicates;
 pub mod priorityq;
 pub mod sweep;
 pub mod tess;
