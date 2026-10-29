@@ -147,40 +147,48 @@ impl Mesh {
         };
 
         // vHead (index 0) -- dummy vertex
-        let mut v_head = Vertex::default();
-        v_head.next = V_HEAD;
-        v_head.prev = V_HEAD;
-        v_head.an_edge = INVALID;
+        let v_head = Vertex {
+            next: V_HEAD,
+            prev: V_HEAD,
+            an_edge: INVALID,
+            ..Vertex::default()
+        };
         m.verts.push(v_head);
 
         // fHead (index 0) -- dummy face
-        let mut f_head = Face::default();
-        f_head.next = F_HEAD;
-        f_head.prev = F_HEAD;
-        f_head.an_edge = INVALID;
-        f_head.trail = INVALID;
-        f_head.marked = false;
-        f_head.inside = false;
+        let f_head = Face {
+            next: F_HEAD,
+            prev: F_HEAD,
+            an_edge: INVALID,
+            trail: INVALID,
+            marked: false,
+            inside: false,
+            ..Face::default()
+        };
         m.faces.push(f_head);
 
         // eHead (index 0), eHeadSym (index 1) -- dummy edge pair
-        let mut e_head = HalfEdge::default();
-        e_head.next = E_HEAD;
-        e_head.onext = INVALID;
-        e_head.lnext = INVALID;
-        e_head.org = INVALID;
-        e_head.lface = INVALID;
-        e_head.winding = 0;
-        e_head.active_region = INVALID;
+        let e_head = HalfEdge {
+            next: E_HEAD,
+            onext: INVALID,
+            lnext: INVALID,
+            org: INVALID,
+            lface: INVALID,
+            winding: 0,
+            active_region: INVALID,
+            ..HalfEdge::default()
+        };
 
-        let mut e_head_sym = HalfEdge::default();
-        e_head_sym.next = E_HEAD_SYM;
-        e_head_sym.onext = INVALID;
-        e_head_sym.lnext = INVALID;
-        e_head_sym.org = INVALID;
-        e_head_sym.lface = INVALID;
-        e_head_sym.winding = 0;
-        e_head_sym.active_region = INVALID;
+        let e_head_sym = HalfEdge {
+            next: E_HEAD_SYM,
+            onext: INVALID,
+            lnext: INVALID,
+            org: INVALID,
+            lface: INVALID,
+            winding: 0,
+            active_region: INVALID,
+            ..HalfEdge::default()
+        };
 
         m.edges.push(e_head);
         m.edges.push(e_head_sym);
@@ -301,10 +309,14 @@ impl Mesh {
         // Insert new pair between ePrev and eNext in the global edge list.
         // List A (even edges): ePrev ← e_new → e_next (forward)
         // List B (odd edges): ePrev^1 ← e_sym → e_next^1
-        let mut e = HalfEdge::default();
-        e.next = e_next;
-        let mut e_s = HalfEdge::default();
-        e_s.next = e_prev;
+        let e = HalfEdge {
+            next: e_next,
+            ..HalfEdge::default()
+        };
+        let e_s = HalfEdge {
+            next: e_prev,
+            ..HalfEdge::default()
+        };
 
         self.edges.push(e); // index e_new
         self.edges.push(e_s); // index e_sym
@@ -350,10 +362,12 @@ impl Mesh {
             return INVALID;
         }
 
-        let mut v = Vertex::default();
-        v.prev = v_prev;
-        v.next = v_next;
-        v.an_edge = e_orig;
+        let v = Vertex {
+            prev: v_prev,
+            next: v_next,
+            an_edge: e_orig,
+            ..Vertex::default()
+        };
         self.verts.push(v);
 
         self.verts[v_prev as usize].next = v_new;
@@ -385,13 +399,15 @@ impl Mesh {
 
         let inside_val = self.faces[f_next as usize].inside;
 
-        let mut f = Face::default();
-        f.prev = f_prev;
-        f.next = f_next;
-        f.an_edge = e_orig;
-        f.trail = INVALID;
-        f.marked = false;
-        f.inside = inside_val;
+        let f = Face {
+            prev: f_prev,
+            next: f_next,
+            an_edge: e_orig,
+            trail: INVALID,
+            marked: false,
+            inside: inside_val,
+            ..Face::default()
+        };
         self.faces.push(f);
 
         self.faces[f_prev as usize].next = f_new;
@@ -579,7 +595,7 @@ impl Mesh {
         true
     }
 
-    fn do_splice(edges: &mut Vec<HalfEdge>, a: EdgeIdx, b: EdgeIdx) {
+    fn do_splice(edges: &mut [HalfEdge], a: EdgeIdx, b: EdgeIdx) {
         let a_onext = edges[a as usize].onext;
         let b_onext = edges[b as usize].onext;
         edges[(a_onext ^ 1) as usize].lnext = b;

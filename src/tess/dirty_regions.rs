@@ -452,25 +452,23 @@ impl Tessellator {
                     self.mesh.as_ref().unwrap().verts[e_lo_dst as usize].t,
                 );
 
-                if !vert_eq(eud_s, eud_t, eld_s, eld_t) {
-                    if self.check_for_left_splice(reg_up) {
-                        let reg_lo_fix = self.region(reg_lo).fix_upper_edge;
-                        let reg_up_fix = self.region(reg_up).fix_upper_edge;
-                        if reg_lo_fix {
-                            let e_lo2 = self.region(reg_lo).e_up;
-                            self.delete_region(reg_lo);
-                            if e_lo2 != INVALID {
-                                self.mesh.as_mut().unwrap().delete_edge(e_lo2);
-                            }
-                            reg_lo = self.region_below(reg_up);
-                        } else if reg_up_fix {
-                            let e_up2 = self.region(reg_up).e_up;
-                            self.delete_region(reg_up);
-                            if e_up2 != INVALID {
-                                self.mesh.as_mut().unwrap().delete_edge(e_up2);
-                            }
-                            reg_up = self.region_above(reg_lo);
+                if !vert_eq(eud_s, eud_t, eld_s, eld_t) && self.check_for_left_splice(reg_up) {
+                    let reg_lo_fix = self.region(reg_lo).fix_upper_edge;
+                    let reg_up_fix = self.region(reg_up).fix_upper_edge;
+                    if reg_lo_fix {
+                        let e_lo2 = self.region(reg_lo).e_up;
+                        self.delete_region(reg_lo);
+                        if e_lo2 != INVALID {
+                            self.mesh.as_mut().unwrap().delete_edge(e_lo2);
                         }
+                        reg_lo = self.region_below(reg_up);
+                    } else if reg_up_fix {
+                        let e_up2 = self.region(reg_up).e_up;
+                        self.delete_region(reg_up);
+                        if e_up2 != INVALID {
+                            self.mesh.as_mut().unwrap().delete_edge(e_up2);
+                        }
+                        reg_up = self.region_above(reg_lo);
                     }
                 }
 

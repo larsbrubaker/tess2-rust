@@ -5,7 +5,7 @@ use crate::geom::Real;
 use crate::mesh::{Mesh, INVALID, V_HEAD};
 
 pub(crate) fn is_valid_coord(c: Real) -> bool {
-    c <= super::MAX_VALID_COORD && c >= super::MIN_VALID_COORD && !c.is_nan()
+    (super::MIN_VALID_COORD..=super::MAX_VALID_COORD).contains(&c) && !c.is_nan()
 }
 
 pub(crate) fn dot(u: &[Real; 3], v: &[Real; 3]) -> Real {
@@ -156,6 +156,8 @@ pub(crate) fn check_orientation(mesh: &mut Mesh) {
 /// Computes the intersection vertex's 3D coords as a weighted combination
 /// of the four edge endpoints, where each edge contributes 50% of the weight
 /// split between its org/dst proportional to their L1 distance to the intersection.
+// Four endpoints passed as plain scalars keep this a direct, order-for-order formula.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_intersect_coords(
     isect_s: Real,
     isect_t: Real,

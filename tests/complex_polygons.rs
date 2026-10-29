@@ -40,46 +40,6 @@ fn test_dat_file(data: &str, winding: WindingRule, min_tris: usize, label: &str)
     );
 }
 
-/// Helper for multi-contour files (shape + holes)
-fn test_dat_files_with_holes(
-    shape_data: &str,
-    holes_data: &str,
-    winding: WindingRule,
-    min_tris: usize,
-    label: &str,
-) {
-    let shape_contours = helpers::parse_contours(shape_data);
-    let hole_contours = helpers::parse_contours(holes_data);
-    assert!(
-        !shape_contours.is_empty(),
-        "{}: should have shape contours",
-        label
-    );
-
-    let mut tess = Tessellator::new();
-    for contour in &shape_contours {
-        tess.add_contour(2, contour);
-    }
-    for contour in &hole_contours {
-        tess.add_contour(2, contour);
-    }
-    let ok = tess.tessellate(winding, ElementType::Polygons, 3, 2, None);
-    assert!(ok, "{}: tessellation failed", label);
-
-    helpers::verify_valid_output(&tess);
-
-    let area = helpers::total_tessellation_area(&tess);
-    assert!(area > 0.0, "{}: should have non-zero area", label);
-
-    assert!(
-        tess.element_count() >= min_tris,
-        "{}: expected at least {} triangles, got {}",
-        label,
-        min_tris,
-        tess.element_count()
-    );
-}
-
 // --- Simple shapes ---
 
 #[test]

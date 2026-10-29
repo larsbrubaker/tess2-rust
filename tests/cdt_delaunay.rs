@@ -128,6 +128,10 @@ fn key(p: [f64; 2]) -> (u64, u64) {
     (p[0].to_bits(), p[1].to_bits())
 }
 
+/// One triangle seen from an edge: its corner opposite that edge, and its corners
+/// counter-clockwise.
+type Side = (u32, [u32; 3]);
+
 /// Asserts the triangulation is constrained Delaunay: across every edge that is not an input
 /// edge, neither triangle's opposite corner lies strictly inside the other's circumcircle,
 /// judged by the exact predicate.
@@ -135,7 +139,7 @@ fn assert_constrained_delaunay(tess: &Tessellator) {
     let elements = tess.elements();
     let flags = tess.edge_flags();
     // Undirected edge -> (opposite corner, the triangle's corners counter-clockwise).
-    let mut sides: HashMap<(u32, u32), Vec<(u32, [u32; 3])>> = HashMap::new();
+    let mut sides: HashMap<(u32, u32), Vec<Side>> = HashMap::new();
     for (t, tri) in elements.chunks(3).enumerate() {
         let [a, b, c] = [tri[0], tri[1], tri[2]];
         let (pa, pb, pc) = (point(tess, a), point(tess, b), point(tess, c));

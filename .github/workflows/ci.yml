@@ -1,0 +1,32 @@
+# Checks every push to main and every pull request: formatting, clippy with warnings as errors,
+# and the tests.
+#
+# On a push to main, deploy-demo.yml's `test` job already runs `cargo test`, so this workflow runs
+# the tests only for pull requests, where nothing else does.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: cargo fmt
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        if: github.event_name == 'pull_request'
+        run: cargo test

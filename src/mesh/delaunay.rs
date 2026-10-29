@@ -12,6 +12,8 @@ impl Mesh {
     /// in f64: positive when `v` lies inside that circle and `v0`, `v1`, `v2` run
     /// counter-clockwise. Its sign can be wrong for points on or near one circle; the
     /// refinement decides with the exact [`in_circle_sign`] instead.
+    // Public API: four points as eight scalar coordinates; grouping them would break callers.
+    #[allow(clippy::too_many_arguments)]
     pub fn in_circle(
         v_s: Real,
         v_t: Real,

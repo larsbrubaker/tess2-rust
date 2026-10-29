@@ -303,8 +303,8 @@ fn demo_butterfly_no_crash() {
     let mut star: Vec<f64> = Vec::new();
     for i in 0..n {
         let angle = -PI / 2.0 + i as f64 * step * 2.0;
-        star.push(angle.cos() as f64);
-        star.push(angle.sin() as f64);
+        star.push(angle.cos());
+        star.push(angle.sin());
     }
     for wr in [
         WindingRule::Odd,
@@ -346,7 +346,7 @@ fn star_output_vertices() {
     let star: Vec<f64> = (0..n)
         .flat_map(|i| {
             let angle = -PI / 2.0 + i as f64 * step * 2.0;
-            [angle.cos() as f64, angle.sin() as f64]
+            [angle.cos(), angle.sin()]
         })
         .collect();
     println!("Star input: {:?}", star);

@@ -332,7 +332,6 @@ impl PriorityQ {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geom::vert_leq;
 
     fn leq_u32(a: u32, b: u32) -> bool {
         a <= b
@@ -373,7 +372,7 @@ mod tests {
         let mut pq = PriorityQ::new(8, leq_u32);
         let h1 = pq.insert(10);
         let _h2 = pq.insert(5);
-        let h3 = pq.insert(7);
+        let _h3 = pq.insert(7);
         pq.init();
         pq.delete(h1);
         assert_eq!(pq.extract_min(), 5);

@@ -44,10 +44,11 @@ pub const DICT_HEAD: NodeIdx = 0;
 
 impl Dict {
     pub fn new() -> Self {
-        let mut head = DictNode::default();
-        head.key = INVALID;
-        head.next = DICT_HEAD;
-        head.prev = DICT_HEAD;
+        let head = DictNode {
+            key: INVALID,
+            next: DICT_HEAD,
+            prev: DICT_HEAD,
+        };
 
         Dict { nodes: vec![head] }
     }

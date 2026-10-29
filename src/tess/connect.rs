@@ -44,10 +44,8 @@ impl Tessellator {
             );
             !vert_eq(s1, t1, s2, t2)
         };
-        if dst_differ {
-            if self.check_for_intersect(reg_up) {
-                return;
-            }
+        if dst_differ && self.check_for_intersect(reg_up) {
+            return;
         }
 
         // Step 2: re-read after possible changes from CheckForIntersect
@@ -293,12 +291,10 @@ impl Tessellator {
         let mut e_top_left = self.mesh.as_ref().unwrap().edges[e_top_right as usize].onext;
         let e_last = e_top_left;
         // Temp fixable-edge cleanup — matches C#.
-        if self.region(reg).fix_upper_edge {
-            if e_top_left != e_top_right {
-                self.delete_region(reg);
-                let _ = self.mesh.as_mut().unwrap().delete_edge(e_top_right);
-                e_top_right = self.mesh.as_ref().unwrap().oprev(e_top_left);
-            }
+        if self.region(reg).fix_upper_edge && e_top_left != e_top_right {
+            self.delete_region(reg);
+            let _ = self.mesh.as_mut().unwrap().delete_edge(e_top_right);
+            e_top_right = self.mesh.as_ref().unwrap().oprev(e_top_left);
         }
         let v_an = self.mesh.as_ref().unwrap().verts[v_event as usize].an_edge;
         if v_an != INVALID {

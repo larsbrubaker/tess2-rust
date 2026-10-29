@@ -25,8 +25,8 @@ fn vertex_size_3_xy_plane() {
         let y = verts[i * 3 + 1];
         let z = verts[i * 3 + 2];
         assert!(x.is_finite() && y.is_finite() && z.is_finite());
-        assert!(x >= -0.01 && x <= 1.01, "x out of range: {}", x);
-        assert!(y >= -0.01 && y <= 1.01, "y out of range: {}", y);
+        assert!((-0.01..=1.01).contains(&x), "x out of range: {}", x);
+        assert!((-0.01..=1.01).contains(&y), "y out of range: {}", y);
         assert!((z - 0.0).abs() < 0.01, "z should be ~0: {}", z);
     }
 }

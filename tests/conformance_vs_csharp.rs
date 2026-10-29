@@ -250,7 +250,7 @@ fn tess2_rust_matches_csharp_tesselator_on_lion() {
     let inputs = parse_lion_polygons();
 
     assert!(
-        refs.len() > 0,
+        !refs.is_empty(),
         "reference file must contain at least one polygon"
     );
     // The reference generator may skip polygons where the C# Tesselator

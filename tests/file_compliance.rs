@@ -34,11 +34,11 @@ const INCLUDE_EXTENSIONS: &[&str] = &[".rs"];
 
 fn get_all_project_files(root: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    collect_files(root, root, &mut files);
+    collect_files(root, &mut files);
     files
 }
 
-fn collect_files(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) {
+fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -51,7 +51,7 @@ fn collect_files(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) {
             if EXCLUDE_DIRS.iter().any(|ex| dir_name.contains(ex)) {
                 continue;
             }
-            collect_files(root, &path, files);
+            collect_files(&path, files);
         } else if path.is_file() {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             let dotted = format!(".{}", ext);

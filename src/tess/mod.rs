@@ -145,6 +145,12 @@ pub struct Tessellator {
     delaunay_flips: usize,
 }
 
+impl Default for Tessellator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Tessellator {
     pub fn new() -> Self {
         Tessellator {
@@ -203,7 +209,7 @@ impl Tessellator {
         if self.status != TessStatus::Ok {
             return;
         }
-        let size = size.min(3).max(2);
+        let size = size.clamp(2, 3);
         let count = vertices.len() / size;
         if self.mesh.is_none() {
             self.mesh = Some(Mesh::new());
@@ -302,7 +308,7 @@ impl Tessellator {
             return false;
         }
 
-        let vertex_size = vertex_size.min(3).max(2);
+        let vertex_size = vertex_size.clamp(2, 3);
         if element_type == ElementType::BoundaryContours {
             self.output_contours(vertex_size);
         } else {

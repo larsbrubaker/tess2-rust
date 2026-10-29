@@ -252,14 +252,12 @@ impl Mesh {
                 return false;
             }
             let next = self.faces[f as usize].next;
-            if self.faces[f as usize].inside {
-                if !self.tessellate_mono_region(f) {
-                    // Mark as outside so the output extraction skips this face.
-                    // Leaving it inside=true would cause degenerate triangles with
-                    // wrong vertices to be emitted (the untriangulated polygon edges
-                    // get read as triangle vertices during output).
-                    self.faces[f as usize].inside = false;
-                }
+            if self.faces[f as usize].inside && !self.tessellate_mono_region(f) {
+                // Mark as outside so the output extraction skips this face.
+                // Leaving it inside=true would cause degenerate triangles with
+                // wrong vertices to be emitted (the untriangulated polygon edges
+                // get read as triangle vertices during output).
+                self.faces[f as usize].inside = false;
             }
             f = next;
         }

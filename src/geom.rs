@@ -152,6 +152,8 @@ pub fn real_interpolate(mut a: Real, x: Real, mut b: Real, y: Real) -> Real {
 /// Compute the intersection point of edges (o1,d1) and (o2,d2).
 /// Returns (s, t) of the intersection.
 /// The result is guaranteed to lie within the bounding rectangle of both edges.
+// Public API: two edges as eight scalar coordinates; grouping them would break callers.
+#[allow(clippy::too_many_arguments)]
 pub fn edge_intersect(
     o1_s: Real,
     o1_t: Real,

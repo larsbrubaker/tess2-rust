@@ -154,12 +154,12 @@ fn output_vertices_within_input_bounds() {
         let x = verts[i * 2];
         let y = verts[i * 2 + 1];
         assert!(
-            x >= 10.0 - 0.001 && x <= 50.0 + 0.001,
+            (10.0 - 0.001..=50.0 + 0.001).contains(&x),
             "x={} out of input bounds [10, 50]",
             x
         );
         assert!(
-            y >= 20.0 - 0.001 && y <= 80.0 + 0.001,
+            (20.0 - 0.001..=80.0 + 0.001).contains(&y),
             "y={} out of input bounds [20, 80]",
             y
         );
@@ -179,8 +179,8 @@ fn output_vertices_within_bounds_star() {
         assert!(x.is_finite(), "x not finite");
         assert!(y.is_finite(), "y not finite");
         // Star vertices range: x in [231, 469], y in [75, 301]
-        assert!(x >= 230.0 && x <= 470.0, "x={} out of star bounds", x);
-        assert!(y >= 74.0 && y <= 302.0, "y={} out of star bounds", y);
+        assert!((230.0..=470.0).contains(&x), "x={} out of star bounds", x);
+        assert!((74.0..=302.0).contains(&y), "y={} out of star bounds", y);
     }
 }
 

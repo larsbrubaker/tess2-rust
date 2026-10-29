@@ -5,7 +5,7 @@ use super::*;
 
 #[test]
 fn debug_polygon_with_hole() {
-    use crate::mesh::{F_HEAD, INVALID as MESH_INVALID};
+    use crate::mesh::F_HEAD;
     let mut tess = Tessellator::new();
     tess.set_option(TessOption::ReverseContours, false);
     tess.add_contour(2, &[0.0f64, 0.0, 3.0, 0.0, 3.0, 3.0, 0.0, 3.0]);
@@ -133,7 +133,7 @@ fn debug_simple_quad() {
 
 #[test]
 fn debug_single_triangle() {
-    use crate::mesh::{E_HEAD, F_HEAD, INVALID as MESH_INVALID, V_HEAD};
+    use crate::mesh::{F_HEAD, INVALID as MESH_INVALID, V_HEAD};
 
     let mut tess = Tessellator::new();
     tess.add_contour(2, &[0.0f64, 0.0, 0.0, 1.0, 1.0, 0.0]);
