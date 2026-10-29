@@ -17,6 +17,15 @@ When a bug is reported, always follow this workflow:
 - Tests MUST test actual production code, not copies - Never duplicate production logic in tests. Import and call the real code. Tests that verify copied code prove nothing about the actual system.
 - When test failures occur, use the fix-test-failures agent (`.claude/agents/fix-test-failures.md`) — it treats all failures as real bugs and resolves them through instrumentation and root cause analysis, never by weakening tests
 
+## Documentation
+
+- Documentation lives in the code: the header comment of the file or module it describes,
+  and doc comments on the items, where whoever works on that code reads it. Facts and
+  reasons go there; history and "as of" status are left to git.
+- Markdown lives only in `README.md` and `CLAUDE.md` at the root, license and notice files,
+  and `.claude/` and `.cursor/` (agent instructions). The gate `tests/markdown_placement.rs`
+  fails on any other `.md` file, untracked ones included; never add a Markdown doc.
+
 ## Skills and Agents
 
 Always check for an applicable skill or agent before starting a task. Skills (`.claude/skills/`) and agents (`.claude/agents/`) encode proven workflows and domain knowledge — use them instead of improvising from scratch.
