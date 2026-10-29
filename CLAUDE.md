@@ -25,6 +25,8 @@ When a bug is reported, always follow this workflow:
 - Markdown lives only in `README.md` and `CLAUDE.md` at the root, license and notice files,
   and `.claude/` and `.cursor/` (agent instructions). The gate `tests/markdown_placement.rs`
   fails on any other `.md` file, untracked ones included; never add a Markdown doc.
+- An idea for later, written down when Lars asks for it, lives in `docs/later/<idea>.md`: it is
+  not scheduled work and needs no plan entry; delete it when it is built or dropped.
 
 ## Skills and Agents
 
